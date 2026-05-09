@@ -47,7 +47,7 @@ contract UnoLobbyTest is Test {
         vm.prank(carol);
         lobby.joinLobby{value: 1 ether}(id);
 
-    // total = 3 ether, fee = 5% = 0.15 ether, remainder = 2.85 -> winner gets remainder
+        // total = 3 ether, fee = 5% = 0.15 ether, remainder = 2.85 -> winner gets remainder
         address[] memory winners = new address[](1);
         winners[0] = alice;
 
@@ -88,21 +88,21 @@ contract UnoLobbyTest is Test {
         vm.prank(carol);
         lobby.joinLobby(id);
 
-    // total = 300 tokens, fee = 15 (5%), remainder = 285
-    // p1= (285*60)/100 = 171
-    // p2= (285*20)/100 = 57
-    // p3= (285*15)/100 = 42.75 (in wei units it's 42.75 * 1e18)
+        // total = 300 tokens, fee = 15 (5%), remainder = 285
+        // p1= (285*60)/100 = 171
+        // p2= (285*20)/100 = 57
+        // p3= (285*15)/100 = 42.75 (in wei units it's 42.75 * 1e18)
 
         address[] memory winners = new address[](3);
         winners[0] = alice;
         winners[1] = bob;
         winners[2] = carol;
 
-    // record balances
-    uint256 devBefore = token.balanceOf(dev);
-    uint256 aliceBefore = token.balanceOf(alice);
-    uint256 bobBefore = token.balanceOf(bob);
-    uint256 carolBefore = token.balanceOf(carol);
+        // record balances
+        uint256 devBefore = token.balanceOf(dev);
+        uint256 aliceBefore = token.balanceOf(alice);
+        uint256 bobBefore = token.balanceOf(bob);
+        uint256 carolBefore = token.balanceOf(carol);
 
         vm.prank(address(this));
         lobby.setAuthorized(address(this), true);
