@@ -3,9 +3,11 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const { ethers } = require('ethers');
+const path = require('path');
 
 // Cargar variables de entorno PRIMERO
-require('dotenv').config({ path: '../.env' });
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '.env'), override: false });
 
 // Luego cargar contractService (que usa process.env)
 const contractService = require('./contractService');
@@ -67,21 +69,23 @@ function getProviderForChain(chain) {
 const app = express();
 const server = http.createServer(app);
 
-// Normalizar FRONTEND_ORIGIN (quitar trailing slash y construir array de origins permitidos)
+// Normalizar FRONTEND_ORIGIN. Acepta uno o varios origins separados por coma.
 const rawOrigin = process.env.FRONTEND_ORIGIN || '';
-const allowedOrigins = [];
+const configuredOrigins = rawOrigin
+  .split(',')
+  .map(origin => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
 
-// Añadir origin de producción si está definido
-if (rawOrigin && rawOrigin !== '*') {
-  allowedOrigins.push(rawOrigin.replace(/\/$/, ''));
-}
+const allowedOrigins = [
+  ...configuredOrigins,
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
 
-// Añadir localhost para desarrollo
-allowedOrigins.push('http://localhost:5173');
-allowedOrigins.push('http://localhost:3000');
-
-// Si no hay FRONTEND_ORIGIN definido, permitir todos (solo para dev/testing)
-const corsOrigin = allowedOrigins.length > 2 ? allowedOrigins : '*';
+// Si no hay FRONTEND_ORIGIN definido, permitir todos solo para dev/testing.
+const corsOrigin = configuredOrigins.includes('*') || configuredOrigins.length === 0
+  ? '*'
+  : Array.from(new Set(allowedOrigins));
 
 console.log('🔒 CORS origins permitidos:', corsOrigin);
 
@@ -91,6 +95,10 @@ app.use(cors({
   methods: ['GET', 'POST'],
   credentials: corsOrigin !== '*'
 }));
+
+app.get('/health', (_req, res) => {
+  res.status(200).json({ ok: true });
+});
 
 // Configurar Socket.IO con CORS
 const io = socketIo(server, {
@@ -895,6 +903,11 @@ io.on('connection', (socket) => {
     console.log('📋 Solicitando info del lobby:', data);
     const lobby = lobbyManager.lobbies.get(data.lobbyId);
     if (lobby) {
+      if (!currentUserId) {
+        const currentPlayer = lobby.players.find(p => p.socketId === socket.id);
+        if (currentPlayer) currentUserId = currentPlayer.id;
+      }
+
       socket.emit('game:lobbyInfo', { success: true, lobby });
       const game = lobbyManager.getGame(data.lobbyId);
       if (game) {
@@ -1005,13 +1018,32 @@ io.on('connection', (socket) => {
 
   socket.on('lobby:reconnect', ({ lobbyId, userId }) => {
     console.log(`🔄 Usuario ${userId} reconectando a lobby ${lobbyId} con socket ${socket.id}`);
+    currentUserId = userId;
     lobbyManager.handleReconnect(lobbyId, userId, socket.id);
+    socket.join(lobbyId);
+
+    const lobby = lobbyManager.lobbies.get(lobbyId);
+    if (lobby) {
+      socket.emit('game:lobbyInfo', { success: true, lobby });
+    }
+
+    const game = lobbyManager.getGame(lobbyId);
+    if (game) {
+      socket.emit('game:gameInfo', { success: true, game });
+      const player = game.players.find(p => p.id === userId);
+      if (player) {
+        player.socketId = socket.id;
+        socket.emit('game:yourHand', player.hand);
+      }
+    }
+
     io.to(lobbyId).emit('lobby:updated', { lobbyId });
     io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
   });
 });
 
 const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Inicializar contractService
 (async () => {
@@ -1024,8 +1056,8 @@ const PORT = process.env.PORT || 3001;
   }
 })();
 
-server.listen(PORT, () => {
-  console.log(`🚀 Servidor WebSocket corriendo en puerto ${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`🚀 Servidor WebSocket corriendo en ${HOST}:${PORT}`);
   console.log(`🔗 Clientes pueden conectarse desde: ${process.env.FRONTEND_ORIGIN || 'any origin (CORS=* configured)'} (set FRONTEND_ORIGIN env to restrict)`);
   console.log(`📋 Eventos disponibles: lobby:*, game:*`);
 });

@@ -85,7 +85,14 @@ class SocketService {
       }
 
       console.log('🔌 Creando nueva conexión socket...');
-      const serverUrl = (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_SOCKET_URL : undefined) || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001');
+      const configuredServerUrl = typeof import.meta !== 'undefined'
+        ? (import.meta as any).env?.VITE_SOCKET_URL
+        : undefined;
+      const browserOrigin = typeof window !== 'undefined' ? window.location.origin : undefined;
+      const isLocalFrontend = browserOrigin
+        ? ['localhost', '127.0.0.1'].includes(new URL(browserOrigin).hostname)
+        : false;
+      const serverUrl = configuredServerUrl || (isLocalFrontend ? 'http://localhost:3001' : browserOrigin) || 'http://localhost:3001';
       console.log('📡 Socket serverUrl:', serverUrl); // Log temporal para verificar URL en producción
 
       this.socket = io(serverUrl, {
