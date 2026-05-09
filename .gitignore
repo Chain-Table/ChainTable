@@ -23,6 +23,25 @@ dist-ssr
 *.sln
 *.sw?
 
-.env.env
-.env.local
+# Environment files and local deployment config
 .env
+.env.*
+*.env
+*.env.*
+
+# Local Docker/infra overrides. Keep production-safe templates out of here only
+# after verifying they do not contain secrets.
+docker-compose*.local.yml
+docker-compose*.override.yml
+docker-compose.homelab.yml
+server/.env
+server/.env.*
+
+# Cloudflare tunnel credentials/configs if copied into the repo.
+.cloudflared/
+cloudflared/
+*.pem
+*.key
+*.crt
+*.p12
+*.json.credential
