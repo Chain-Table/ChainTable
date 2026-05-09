@@ -8,13 +8,13 @@ contract DeployV2Sepolia is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address devWallet = vm.envAddress("DEV_WALLET");
-        
+
         vm.startBroadcast(deployerPrivateKey);
-        
+
         UnoLobbyV2 unoLobbyV2 = new UnoLobbyV2(devWallet);
-        
+
         vm.stopBroadcast();
-        
+
         console.log("UnoLobbyV2 deployed to:", address(unoLobbyV2));
         console.log("Dev Wallet:", devWallet);
     }
