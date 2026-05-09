@@ -1,5 +1,5 @@
-const { expect } = require('chai');
-const { ethers } = require('hardhat');
+import { expect } from 'chai';
+import { ethers } from 'hardhat';
 
 describe('UnoLobby', function () {
   let UnoLobby, MockERC20, uno, token, owner, dev, alice, bob, carol;
@@ -9,17 +9,17 @@ describe('UnoLobby', function () {
     UnoLobby = await ethers.getContractFactory('UnoLobby');
     MockERC20 = await ethers.getContractFactory('MockERC20');
 
-    token = await MockERC20.deploy('MockWETH', 'WETH', ethers.utils.parseEther('1000'));
-    await token.deployed();
+    token = await MockERC20.deploy('MockWETH', 'WETH', ethers.parseEther('1000'));
+    await token.waitForDeployment();
 
     uno = await UnoLobby.deploy(dev.address);
-    await uno.deployed();
+    await uno.waitForDeployment();
   });
 
   it('BEAST native flow', async function () {
     // create lobby native
-    const entry = ethers.utils.parseEther('1');
-    await uno.connect(alice).createLobby(ethers.constants.AddressZero, entry, 3, 0); // BEAST
+    const entry = ethers.parseEther('1');
+    await uno.connect(alice).createLobby(ethers.ZeroAddress, entry, 3, 0); // BEAST
     const id = 1;
 
     // join
@@ -34,22 +34,24 @@ describe('UnoLobby', function () {
     // dev should receive fee 0.15, winner 2.85
     // check balances via provider
     const devBalance = await ethers.provider.getBalance(dev.address);
-    expect(devBalance).to.be.a('object');
+    expect(typeof devBalance).to.equal('bigint');
   });
 
   it('CLASSIC ERC20 flow', async function () {
-    const entry = ethers.utils.parseEther('0.01');
-    await uno.connect(alice).createLobby(token.address, entry, 3, 1); // CLASSIC
+    const entry = ethers.parseEther('0.01');
+    const tokenAddress = await token.getAddress();
+    await uno.connect(alice).createLobby(tokenAddress, entry, 3, 1); // CLASSIC
     const id = 1;
 
     // give tokens to players
-    await token.transfer(bob.address, ethers.utils.parseEther('10'));
-    await token.transfer(carol.address, ethers.utils.parseEther('10'));
-    await token.transfer(alice.address, ethers.utils.parseEther('10'));
+    await token.transfer(bob.address, ethers.parseEther('10'));
+    await token.transfer(carol.address, ethers.parseEther('10'));
+    await token.transfer(alice.address, ethers.parseEther('10'));
 
-    await token.connect(bob).approve(uno.address, entry);
-    await token.connect(carol).approve(uno.address, entry);
-    await token.connect(alice).approve(uno.address, entry);
+    const unoAddress = await uno.getAddress();
+    await token.connect(bob).approve(unoAddress, entry);
+    await token.connect(carol).approve(unoAddress, entry);
+    await token.connect(alice).approve(unoAddress, entry);
 
     await uno.connect(bob).joinLobby(id);
     await uno.connect(carol).joinLobby(id);
@@ -62,21 +64,25 @@ describe('UnoLobby', function () {
   });
 
   it('reject double join', async function () {
-    const entry = ethers.utils.parseEther('0.01');
-    await uno.connect(alice).createLobby(token.address, entry, 4, 0);
+    const entry = ethers.parseEther('0.01');
+    const tokenAddress = await token.getAddress();
+    await uno.connect(alice).createLobby(tokenAddress, entry, 4, 0);
     const id = 1;
-    await token.transfer(bob.address, ethers.utils.parseEther('10'));
-    await token.connect(bob).approve(uno.address, entry);
+    await token.transfer(bob.address, ethers.parseEther('10'));
+    const unoAddress = await uno.getAddress();
+    await token.connect(bob).approve(unoAddress, entry);
     await uno.connect(bob).joinLobby(id);
     await expect(uno.connect(bob).joinLobby(id)).to.be.revertedWith('already joined');
   });
 
   it('cancel and refund', async function () {
-    const entry = ethers.utils.parseEther('0.01');
-    await uno.connect(alice).createLobby(token.address, entry, 4, 0);
+    const entry = ethers.parseEther('0.01');
+    const tokenAddress = await token.getAddress();
+    await uno.connect(alice).createLobby(tokenAddress, entry, 4, 0);
     const id = 1;
-    await token.transfer(bob.address, ethers.utils.parseEther('10'));
-    await token.connect(bob).approve(uno.address, entry);
+    await token.transfer(bob.address, ethers.parseEther('10'));
+    const unoAddress = await uno.getAddress();
+    await token.connect(bob).approve(unoAddress, entry);
     await uno.connect(bob).joinLobby(id);
 
     // cancel
