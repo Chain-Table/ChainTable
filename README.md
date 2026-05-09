@@ -40,10 +40,12 @@ Una plataforma de juego UNO descentralizada construida sobre blockchain, donde l
 
 ### Prerrequisitos
 
-- **Node.js** v18 o superior
+- **Node.js** v22.10.0 o superior (LTS recomendado)
 - **npm** o **yarn**
 - MetaMask u otra wallet compatible instalada
 - Para lobbies pagos: Fondos en la red correspondiente
+
+> Nota: el frontend y el servidor suelen funcionar con versiones anteriores, pero los tests/compilación con **Hardhat v3** requieren Node 22+.
 
 ### Instalación
 
