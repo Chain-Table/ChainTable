@@ -112,8 +112,8 @@ contract UnoLobbyV2 is Ownable, ReentrancyGuard {
     // ============================================
     
     constructor(address _devWallet) Ownable(msg.sender) {
-        if (_devWallet == address(0)) revert InvalidDevWallet();
-        devWallet = _devWallet;
+    if (_devWallet == address(0)) revert InvalidDevWallet();
+    devWallet = _devWallet;
     }
 
     // ============================================
