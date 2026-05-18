@@ -17,28 +17,26 @@ export default function Landing() {
       </div>
 
       {/* Decorative icons */}
-      <div className="absolute top-20 left-12 text-6xl opacity-20 animate-bounce">🃏</div>
-      <div className="absolute bottom-24 right-20 text-6xl opacity-20 animate-bounce">🃏</div>
-      <div className="absolute bottom-24 left-20 text-6xl opacity-20 animate-bounce">🃏</div>
-      <div className="absolute top-24 right-20 text-6xl opacity-20 animate-bounce">🃏</div>
+      <div className="hidden sm:block absolute top-20 left-12 text-6xl opacity-20 animate-bounce">🃏</div>
+      <div className="hidden sm:block absolute bottom-24 right-20 text-6xl opacity-20 animate-bounce">🃏</div>
+      <div className="hidden sm:block absolute bottom-24 left-20 text-6xl opacity-20 animate-bounce">🃏</div>
+      <div className="hidden sm:block absolute top-24 right-20 text-6xl opacity-20 animate-bounce">🃏</div>
 
 
 
-      <div className="relative z-10 max-w-4xl mx-auto">
-        <div className="flex justify-between items-start mb-8">
-          <div className="text-center">
-            <h1 className="text-6xl md:text-7xl font-extrabold mb-2 bg-gradient-to-r from-yellow-400 via-orange-400 to-red-500 bg-clip-text text-transparent">
+      <div className="relative z-10 w-full max-w-4xl mx-auto">
+        <div className="mb-8 flex justify-center">
+          <div className="w-full text-center flex flex-col items-center">
+            <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold mb-2 bg-gradient-to-r from-yellow-400 via-orange-400 to-red-500 bg-clip-text text-transparent break-words">
               {t('title')}
             </h1>
-            <p className="text-xl md:text-2xl max-w-3xl mx-auto text-gray-300 font-medium leading-relaxed">
+            <p className="text-xl md:text-2xl max-w-3xl mx-auto text-gray-300 font-medium leading-relaxed text-center">
               {t('tagline_line1', { game: t('tagline_game') })}
             </p>
-            <p className="text-base md:text-lg mt-4 max-w-2xl mx-auto text-gray-400 leading-relaxed">
+            <p className="text-base md:text-lg mt-4 max-w-2xl mx-auto text-gray-400 leading-relaxed text-center">
               {t('tagline_line2')}
             </p>
           </div>
-
-          <div className="ml-6" />
         </div>
 
         {/* Features Grid */}
