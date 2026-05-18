@@ -119,5 +119,14 @@ export interface GameUpdateData {
   cardsDrawn?: number;
 }
 
+export interface GameLogEntry {
+  id: string;
+  action: GameUpdateData["action"] | "started" | "winner" | "over";
+  playerName?: string;
+  playedCard?: Card;
+  cardsDrawn?: number;
+  createdAt: number;
+}
+
 // Tipos de colores para Wild cards
 export type WildColor = "Red" | "Blue" | "Green" | "Yellow";

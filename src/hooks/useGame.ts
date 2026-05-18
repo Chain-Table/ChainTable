@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ethers } from 'ethers';
-import type { GameState, Card, GameUpdateData, Winner, WildColor } from '../types/game';
+import type { GameState, Card, GameUpdateData, Winner, WildColor, GameLogEntry } from '../types/game';
 import { socketService } from '../services/socketService';
 import { getUserSession } from '../utils/userSession';
 import { useSocket } from './useSocket';
@@ -33,6 +33,7 @@ interface UseGameReturn {
   winners: Winner[];
   gameMessage: string | null;
   prizeDistributionTx: { hash: string; explorerUrl: string } | null;
+  actionLog: GameLogEntry[];
   
   // Cleanup
   leaveGame: () => void;
@@ -49,6 +50,7 @@ export function useGame(lobbyId: string): UseGameReturn {
   const [pendingWildCardIndex, setPendingWildCardIndex] = useState<number | null>(null);
   const [gameMessage, setGameMessage] = useState<string | null>(null);
   const [prizeDistributionTx, setPrizeDistributionTx] = useState<{ hash: string; explorerUrl: string } | null>(null);
+  const [actionLog, setActionLog] = useState<GameLogEntry[]>([]);
 
   // Obtener sesión actual
   const session = getUserSession();
@@ -137,6 +139,17 @@ export function useGame(lobbyId: string): UseGameReturn {
   const showGameMessage = useCallback((message: string, duration = 3000) => {
     setGameMessage(message);
     setTimeout(() => setGameMessage(null), duration);
+  }, []);
+
+  const addActionLogEntry = useCallback((entry: Omit<GameLogEntry, 'id' | 'createdAt'>) => {
+    setActionLog((current) => [
+      {
+        ...entry,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: Date.now(),
+      },
+      ...current,
+    ].slice(0, 40));
   }, []);
 
   /**
@@ -335,6 +348,9 @@ export function useGame(lobbyId: string): UseGameReturn {
       if (data.success && data.lobby) {
         console.log('📋 Información del lobby recibida:', data.lobby);
         setGameState(data.lobby);
+        if (data.lobby.status === 'waiting') {
+          setActionLog([]);
+        }
         setError(null);
       } else {
         console.error('❌ Error obteniendo lobby:', data.error);
@@ -360,6 +376,8 @@ export function useGame(lobbyId: string): UseGameReturn {
     // Game started
     const handleGameStarted = ({ gameState: newGameState }: { gameState: GameState; firstCard: Card }) => {
       setGameState(newGameState);
+      setActionLog([]);
+      addActionLogEntry({ action: 'started' });
       showGameMessage(`¡La partida ha comenzado!`);
       setError(null);
       setIsLoading(false);
@@ -369,6 +387,12 @@ export function useGame(lobbyId: string): UseGameReturn {
     const handleGameUpdate = (data: GameUpdateData) => {
       setGameState(data.gameState);
       setIsLoading(false);
+      addActionLogEntry({
+        action: data.action,
+        playerName: data.playerPlayed,
+        playedCard: data.playedCard,
+        cardsDrawn: data.cardsDrawn,
+      });
       
       // Mostrar mensajes según la acción
       switch (data.action) {
@@ -428,12 +452,14 @@ export function useGame(lobbyId: string): UseGameReturn {
 
     // Winner found
     const handleWinner = ({ username, rank }: { username: string; rank: number; gameState: GameState }) => {
+      addActionLogEntry({ action: 'winner', playerName: username });
       showGameMessage(`🏆 ${username} salió en ${rank}° lugar!`, 4000);
     };
 
     // Game over
     const handleGameOver = ({ gameState: finalState }: { gameState: GameState }) => {
       setGameState(finalState);
+      addActionLogEntry({ action: 'over' });
       showGameMessage('¡Partida terminada!', 5000);
       setIsLoading(false);
     };
@@ -696,6 +722,7 @@ export function useGame(lobbyId: string): UseGameReturn {
     winners,
     gameMessage,
     prizeDistributionTx,
+    actionLog,
     
     // Cleanup
     leaveGame,
