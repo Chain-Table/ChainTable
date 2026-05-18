@@ -8,6 +8,7 @@ import Card from "../components/Card";
 import PlayerHand from "../components/PlayerHand";
 import ColorPicker from "../components/ColorPicker";
 import { useTranslation } from 'react-i18next'
+import type { Card as CardType, GameLogEntry } from "../types/game";
 
 const Game: React.FC = () => {
   const { lobbyId } = useParams<{ lobbyId: string }>();
@@ -45,6 +46,7 @@ const Game: React.FC = () => {
     winners,
     gameMessage,
     prizeDistributionTx,
+    actionLog,
     leaveGame,
     // autoDistributePrizes manejado internamente por useGame
   } = useGame(lobbyId || "");
@@ -66,6 +68,125 @@ const Game: React.FC = () => {
   if (!lobbyId || !session) {
     return null; // Se redirigirá en useEffect
   }
+
+  const formatPlayerForLog = (playerName?: string) => {
+    if (!playerName) return "-";
+    const player = gameState?.players.find((item) => item.username === playerName);
+    const identifier = player?.walletAddress || playerName;
+
+    if (identifier.length > 12) {
+      return `${identifier.slice(0, 6)}...${identifier.slice(-4)}`;
+    }
+
+    return identifier;
+  };
+
+  const getCardLabel = (card?: CardType) => {
+    if (!card) return "";
+
+    if (card.value === "Skip") return `${t("card_value_skip")} ${t(`card_color_${card.color.toLowerCase()}`)}`;
+    if (card.value === "Reverse") return `${t("card_value_reverse")} ${t(`card_color_${card.color.toLowerCase()}`)}`;
+    if (card.value === "DrawTwo") return `${t("card_value_draw_two")} ${t(`card_color_${card.color.toLowerCase()}`)}`;
+    if (card.value === "Wild") return t("card_value_wild");
+    if (card.value === "WildDrawFour") return t("card_value_wild_draw_four");
+
+    return `${card.value} ${t(`card_color_${card.color.toLowerCase()}`)}`;
+  };
+
+  const getCardTextClass = (card?: CardType) => {
+    switch (card?.color) {
+      case "Red":
+        return "text-red-300";
+      case "Blue":
+        return "text-blue-300";
+      case "Green":
+        return "text-emerald-300";
+      case "Yellow":
+        return "text-yellow-200";
+      case "Wild":
+        return "text-fuchsia-300";
+      default:
+        return "text-white";
+    }
+  };
+
+  const renderColoredCard = (card?: CardType, fallback?: string) => (
+    <span className={`font-bold ${getCardTextClass(card)}`}>
+      {card ? getCardLabel(card) : fallback}
+    </span>
+  );
+
+  const renderLogMessage = (entry: GameLogEntry) => {
+    const player = formatPlayerForLog(entry.playerName);
+    const count = entry.cardsDrawn || 1;
+    const isSpanish = t("game_log_title") === "Log de partida";
+    const addressLabel = isSpanish ? "Dirección" : "Address";
+
+    switch (entry.action) {
+      case "started":
+        return <>{t("game_log_started")}</>;
+      case "over":
+        return <>{t("game_log_over")}</>;
+      case "winner":
+        return <>{t("game_log_winner", { player })}</>;
+      case "play":
+        return (
+          <>
+            {addressLabel} <span className="font-semibold text-white">{player}</span>{" "}
+            {isSpanish ? "tiró" : "played"} {renderColoredCard(entry.playedCard)}
+          </>
+        );
+      case "draw":
+        return <>{t(count === 1 ? "game_log_draw" : "game_log_draw_plural", { player, count })}</>;
+      case "pass":
+        return <>{t("game_log_pass", { player })}</>;
+      case "skip":
+        return (
+          <>
+            {addressLabel} <span className="font-semibold text-white">{player}</span>{" "}
+            {isSpanish ? "tiró" : "played"} {renderColoredCard(entry.playedCard, t("card_value_skip"))}
+          </>
+        );
+      case "reverse":
+        return (
+          <>
+            {addressLabel} <span className="font-semibold text-white">{player}</span>{" "}
+            {isSpanish ? "tiró" : "played"} {renderColoredCard(entry.playedCard, t("card_value_reverse"))}
+          </>
+        );
+      case "drawTwo_played":
+        return (
+          <>
+            {addressLabel} <span className="font-semibold text-white">{player}</span>{" "}
+            {isSpanish ? "tiró" : "played"} {renderColoredCard(entry.playedCard, "+2")}
+          </>
+        );
+      case "drawFour_played":
+        return (
+          <>
+            {addressLabel} <span className="font-semibold text-white">{player}</span>{" "}
+            {isSpanish ? "tiró" : "played"} {renderColoredCard(entry.playedCard, "+4")}
+          </>
+        );
+      case "draw_penalty":
+        return <>{t("game_log_draw_penalty", { player, count })}</>;
+      case "color_chosen":
+        return <>{t("game_log_color_chosen", { player })}</>;
+      case "player_disconnected":
+        return <>{t("game_log_disconnected", { player })}</>;
+      case "stack_allowed":
+        return <>{t("game_log_stack_allowed", { player })}</>;
+      case "stack_not_allowed":
+        return <>{t("game_log_stack_not_allowed", { player })}</>;
+      default:
+        return <>{t("game_log_play", { player, card: getCardLabel(entry.playedCard) })}</>;
+    }
+  };
+
+  const latestLogByPlayer = actionLog.filter((entry, index, entries) => {
+    if (!entry.playerName) return index === 0;
+    return entries.findIndex((item) => item.playerName === entry.playerName) === index;
+  }).slice(0, Math.max(4, gameState?.players.length || 4));
 
   // Lobby en espera - mostrar si NO HAY gameState (lobby) o si está waiting
   if (!gameState || gameState?.status === "waiting") {
@@ -392,10 +513,10 @@ const Game: React.FC = () => {
         ></div>
       </div>
 
-      <div className="max-w-7xl mx-auto relative z-10">
+      <div className="max-w-[1500px] mx-auto relative z-10">
         {/* Header del juego mejorado */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 bg-gradient-to-r from-emerald-900/50 to-green-900/50 backdrop-blur-sm rounded-2xl p-6 border border-emerald-700/30 shadow-xl">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 bg-gradient-to-r from-emerald-900/50 to-green-900/50 backdrop-blur-sm rounded-2xl p-4 sm:p-6 border border-emerald-700/30 shadow-xl">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
               <span className="text-2xl">🃏</span>
             </div>
@@ -467,77 +588,52 @@ const Game: React.FC = () => {
         )}
 
         {/* Area principal del juego */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Otros jugadores (lado izquierdo) */}
-          <div className="lg:col-span-1">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 shadow-2xl border border-slate-700">
-              <h3 className="text-white font-bold mb-4 text-lg flex items-center gap-2">
-                <span>👥</span> {t('other_players')}
+        <div className="grid grid-cols-1 xl:grid-cols-[260px_minmax(0,1fr)_260px] gap-4">
+          {/* Log de partida (lado izquierdo) */}
+          <div className="xl:col-span-1">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 shadow-2xl border border-slate-700">
+              <h3 className="text-white font-bold mb-3 text-lg flex items-center gap-2">
+                <span>📝</span> {t('game_log_title')}
               </h3>
-              <div className="space-y-3">
-                {gameState?.players
-                  .filter((player) => player.socketId !== session?.id)
-                  .map((player) => (
+              {latestLogByPlayer.length === 0 ? (
+                <div className="p-3 rounded-xl bg-slate-700/50 border border-slate-600 text-slate-300 text-sm">
+                  {t('game_log_empty')}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {latestLogByPlayer.map((entry) => (
                     <div
-                      key={player.socketId}
-                      className={`p-4 rounded-xl transition-all duration-300 ${
-                        gameState.players[gameState.currentTurnIndex]
-                          ?.socketId === player.socketId
-                          ? "bg-gradient-to-br from-green-600 to-emerald-600 shadow-lg shadow-green-500/50 scale-105 border-2 border-green-400"
-                          : "bg-gradient-to-br from-slate-700 to-slate-800 border-2 border-slate-600"
-                      }`}
+                      key={entry.id}
+                      className="p-3 rounded-xl bg-slate-700/70 border border-slate-600 text-left animate-fade-in"
                     >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
-                            gameState.players[gameState.currentTurnIndex]
-                              ?.socketId === player.socketId
-                              ? "bg-white/20"
-                              : "bg-slate-600"
-                          }`}
-                        >
-                          {player.username.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-white font-bold">
-                            {player.username.slice(0, 5)}...
-                            {player.username.slice(-5)}
-                          </div>
-                          <div className="text-sm flex items-center gap-1">
-                            <span className="text-yellow-400 font-bold">
-                              🃏
-                            </span>
-                            <span className="text-gray-300 font-semibold">
-                              {player.cardCount} cartas
-                            </span>
-                          </div>
-                        </div>
+                      <div className="text-slate-100 text-sm leading-snug">
+                        {renderLogMessage(entry)}
                       </div>
-                      {player.cardCount === 1 && (
-                        <div className="mt-2 text-center">
-                          <span className="inline-block px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full animate-pulse">
-                            ¡UNO!
-                          </span>
-                        </div>
-                      )}
+                      <div className="mt-1 text-[11px] text-slate-400">
+                        {new Date(entry.createdAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
                     </div>
                   ))}
               </div>
+              )}
             </div>
           </div>
 
           {/* Centro del juego */}
-          <div className="lg:col-span-2">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-8 text-center shadow-2xl border border-slate-700">
-              <h3 className="text-white font-bold mb-6 text-xl flex items-center justify-center gap-2">
+          <div className="xl:col-span-1 min-w-0">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 sm:p-5 text-center shadow-2xl border border-slate-700">
+              <h3 className="text-white font-bold mb-4 text-xl flex items-center justify-center gap-2">
                 <span>🎲</span> {t('game_table')}
               </h3>
 
               {/* Carta actual y mazo */}
-              <div className="flex justify-center items-start gap-12 mb-8">
+              <div className="flex flex-col sm:flex-row justify-center items-center sm:items-start gap-5 lg:gap-10 mb-5">
                 {/* Mazo */}
                 <div className="text-center flex flex-col items-center">
-                  <div className="w-36 h-52 rounded-xl border-4 border-blue-600 overflow-hidden mb-3 shadow-xl transform hover:scale-105 transition-transform cursor-pointer bg-white">
+                  <div className="w-28 h-40 sm:w-32 sm:h-48 lg:w-36 lg:h-52 rounded-xl border-4 border-blue-600 overflow-hidden mb-3 shadow-xl transform hover:scale-105 transition-transform cursor-pointer bg-white">
                     <img 
                       src={`/cartamazo.png?v=${Date.now()}`}
                       alt="Mazo de cartas" 
@@ -609,33 +705,60 @@ const Game: React.FC = () => {
             </div>
           </div>
 
-          {/* Estadísticas del juego */}
-          <div className="lg:col-span-1">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 shadow-2xl border border-slate-700">
-              <h3 className="text-white font-bold mb-5 text-lg flex items-center gap-2">
-                <span>📊</span> {t('stats_title')}
+          {/* Otros jugadores (lado derecho) */}
+          <div className="xl:col-span-1">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 shadow-2xl border border-slate-700">
+              <h3 className="text-white font-bold mb-3 text-lg flex items-center gap-2">
+                <span>👥</span> {t('other_players')}
               </h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-900/50 to-blue-950/50 rounded-xl border border-blue-700">
-                  <span className="text-blue-200 font-semibold">{t('cards_in_deck')}</span>
-                  <span className="text-white font-bold text-lg">
-                    {gameState?.drawPile?.length || 0}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-900/50 to-purple-950/50 rounded-xl border border-purple-700">
-                  <span className="text-purple-200 font-semibold">{t('direction_label')}</span>
-                  <span className="text-white font-bold text-xl">
-                    {gameState?.direction === 1 ? "→" : "←"}
-                  </span>
-                </div>
-                {gameState?.drawStackCount && gameState.drawStackCount > 0 && (
-                  <div className="flex items-center justify-between p-3 bg-gradient-to-r from-red-900/50 to-orange-950/50 rounded-xl border border-red-700 animate-pulse">
-                    <span className="text-red-200 font-semibold">⚡ Stack</span>
-                    <span className="text-red-400 font-bold text-xl">
-                      +{gameState.drawStackCount}
-                    </span>
-                  </div>
-                )}
+              <div className="space-y-2">
+                {gameState?.players
+                  .filter((player) => player.socketId !== session?.id)
+                  .map((player) => (
+                    <div
+                      key={player.socketId}
+                      className={`p-3 rounded-xl transition-all duration-300 ${
+                        gameState.players[gameState.currentTurnIndex]
+                          ?.socketId === player.socketId
+                          ? "bg-gradient-to-br from-green-600 to-emerald-600 shadow-lg shadow-green-500/40 border-2 border-green-400"
+                          : "bg-gradient-to-br from-slate-700 to-slate-800 border-2 border-slate-600"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
+                            gameState.players[gameState.currentTurnIndex]
+                              ?.socketId === player.socketId
+                              ? "bg-white/20"
+                              : "bg-slate-600"
+                          }`}
+                        >
+                          {player.username.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-white font-bold truncate">
+                            {player.username.slice(0, 5)}...
+                            {player.username.slice(-5)}
+                          </div>
+                          <div className="text-sm flex items-center gap-1">
+                            <span className="text-yellow-400 font-bold">
+                              🃏
+                            </span>
+                            <span className="text-gray-300 font-semibold">
+                              {player.cardCount} {t('cards')}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      {player.cardCount === 1 && (
+                        <div className="mt-2 text-center">
+                          <span className="inline-block px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full animate-pulse">
+                            ¡UNO!
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
               </div>
             </div>
           </div>
