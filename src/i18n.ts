@@ -162,6 +162,9 @@ const resources = {
       msg_prizes_paid: '✅ Premios pagados on-chain',
       msg_lobby_closed: 'El creador cerró la mesa',
       msg_recovering: 'Recuperando tu entrada on-chain…',
+      msg_timeout: '⏱ Se acabó tu tiempo',
+      msg_auto_draw: 'No tenías jugada: robaste una carta',
+      msg_auto_pass: 'Tampoco sirve: pasa el turno',
     },
   },
   en: {
@@ -323,6 +326,9 @@ const resources = {
       msg_prizes_paid: '✅ Prizes paid on-chain',
       msg_lobby_closed: 'The host closed the table',
       msg_recovering: 'Recovering your entry on-chain…',
+      msg_timeout: "⏱ Time's up",
+      msg_auto_draw: 'No playable card: you drew one',
+      msg_auto_pass: 'Still nothing: turn passed',
     },
   },
 }

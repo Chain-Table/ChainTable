@@ -84,6 +84,8 @@ class UnoGame {
     this.finishedIds = new Set();
     this.winners = [];
     this.status = 'in_game';
+    this.turnSeq = 0; // sube con cada cambio de turno: el reloj se reinicia cuando cambia
+    this.awaitingColor = false;
     
     // CRITICAL: Incluir información del lobby para auto-distribución de premios
     this.type = lobbyData.type; // 'gratuito' | 'pago'
@@ -184,6 +186,7 @@ class UnoGame {
 
   nextTurn() {
     this.currentTurnIndex = (this.currentTurnIndex + this.direction + this.players.length) % this.players.length;
+    this.turnSeq++;
     Object.keys(this.hasDrawnCard).forEach(k => { this.hasDrawnCard[k] = false; });
   }
 
@@ -404,6 +407,7 @@ class LobbyManager {
     // For non-wild cards set active color immediately. For wilds (including WildDrawFour)
     // the active color must be chosen by the player via chooseColor before we change turns
     if (cardToPlay.color !== 'Wild') game.currentActiveColor = cardToPlay.color;
+    game.awaitingColor = needsColorChoice;
 
     // Advance turn only if we don't need the player to choose a color first.
     if (!needsColorChoice) {
@@ -502,47 +506,29 @@ class LobbyManager {
   chooseColor(lobbyId, playerId, color) {
     const game = this.games.get(lobbyId);
     if (!game) return { success: false, error: 'Juego no encontrado' };
+    if (game.players[game.currentTurnIndex]?.id !== playerId || !game.awaitingColor) return { success: false, error: 'No es tu turno' };
     const validColors = ['Red','Blue','Green','Yellow'];
     if (!validColors.includes(color)) return { success: false, error: 'Color inválido' };
     game.currentActiveColor = color;
-    // If there is an active draw stack (e.g. WildDrawFour) we must apply it now
+    game.awaitingColor = false;
     let drawCards = 0;
     let action = null;
+    game.nextTurn();
+    // +4: el siguiente apila si puede; si no, se come las cartas y pierde el turno
     if (game.drawStackActive) {
-      const lastPlayed = game.getCurrentCard();
-      // Calculate the penalized player's index (the next in turn order)
-      const penalizedIndex = (game.currentTurnIndex + game.direction + game.players.length) % game.players.length;
-      const penalizedPlayer = game.players[penalizedIndex];
-
-      // Determine if the penalized player can defend (stack) with same-value draw cards
-      const canDefend = penalizedPlayer.hand.some(card => (
-        lastPlayed.value === 'WildDrawFour' && card.value === 'WildDrawFour'
-      ) || (
-        lastPlayed.value === 'DrawTwo' && card.value === 'DrawTwo'
-      ));
-
+      const penalized = game.players[game.currentTurnIndex];
+      const canDefend = penalized.hand.some((c) => c.value === game.getCurrentCard().value);
       if (canDefend) {
-        // Give the penalized player the turn so they may respond (stack)
-        game.currentTurnIndex = penalizedIndex;
         action = 'stack_allowed';
       } else {
-        // Apply the draw penalty to the penalized player and skip their turn
-        for (let i = 0; i < game.drawStackCount; i++) game.drawCard(penalizedPlayer.id);
         drawCards = game.drawStackCount;
+        for (let i = 0; i < drawCards; i++) game.drawCard(penalized.id);
         game.drawStackCount = 0;
         game.drawStackActive = false;
         action = 'draw_penalty';
-        // Set turn to the player after the penalized one
-        game.currentTurnIndex = (penalizedIndex + game.direction + game.players.length) % game.players.length;
+        game.nextTurn();
       }
     }
-
-    // If there was no draw stack (regular Wild), advance the turn normally
-    if (!game.drawStackActive) {
-      // regular wild: after choosing color, next player's turn
-      game.nextTurn();
-    }
-
     return { success: true, game, chosenColor: color, action, drawCards };
   }
 }
@@ -551,9 +537,12 @@ const lobbyManager = new LobbyManager();
 
 // Nunca mandar manos ajenas, mazo ni contraseña a los clientes
 function publicGame(game) {
-  const { drawPile, hasDrawnCard, finishedIds, ...rest } = game;
+  const { drawPile, hasDrawnCard, finishedIds, turnDeadline, ...rest } = game;
   return {
     ...rest,
+    turnMs: TURN_MS,
+    turnMsLeft: turnDeadline ? Math.max(0, turnDeadline - Date.now()) : null,
+    drawnThisTurn: !!hasDrawnCard[game.players[game.currentTurnIndex]?.id],
     drawPileCount: drawPile.length,
     players: game.players.map(({ hand, token, ...p }) => ({ ...p, cardCount: hand ? hand.length : p.cardCount })),
   };
@@ -572,6 +561,97 @@ function ownsId(id, token) {
   const lobby = lobbyManager.lobbies.get(lobbyManager.playerLobbyMap.get(id));
   const p = lobby?.players.find((x) => x.id === id);
   return !p || p.token === token;
+}
+
+// ===== Reloj de turno y jugadas automáticas =====
+const TURN_MS = Number(process.env.TURN_MS) || 15000;
+const AUTO_MS = 900; // pausa antes de una jugada automática, para que se vea qué pasó
+const turnTimers = new Map(); // lobbyId -> { seq, t }
+const autoTimers = new Map();
+
+const canPlayAny = (game, p) =>
+  p.hand.some((c) => game.isValidPlay(c, game.getCurrentCard(), game.currentActiveColor, game.drawStackActive));
+
+function emitGameUpdate(lobbyId, game, playerId, extra = {}) {
+  io.to(lobbyId).emit('game:update', {
+    gameState: publicGame(game),
+    playerPlayed: game.players.find((p) => p.id === playerId)?.username || 'Unknown',
+    newTurnIndex: game.currentTurnIndex,
+    currentPlayerName: game.players[game.currentTurnIndex]?.username || null,
+    currentActiveColor: game.currentActiveColor,
+    ...extra,
+  });
+  // Penalidades y robos automáticos cambian manos ajenas: se mandan todas
+  game.players.forEach((p) => io.to(p.socketId).emit('game:yourHand', p.hand));
+}
+
+// Reinicia los 15s solo cuando cambia el turno (robar no da tiempo extra)
+function armTurnTimer(lobbyId, game) {
+  const prev = turnTimers.get(lobbyId);
+  if (game.status === 'finished') {
+    clearTimeout(prev?.t);
+    clearTimeout(autoTimers.get(lobbyId));
+    turnTimers.delete(lobbyId);
+    game.turnDeadline = null;
+    return;
+  }
+  if (prev?.seq === game.turnSeq) return;
+  clearTimeout(prev?.t);
+  game.turnDeadline = Date.now() + TURN_MS;
+  turnTimers.set(lobbyId, { seq: game.turnSeq, t: setTimeout(() => onTurnTimeout(lobbyId), TURN_MS) });
+}
+
+// Una jugada forzada para el jugador de turno. Sin `timeout` solo actúa si no tiene nada jugable.
+function autoStep(lobbyId, timeout = false) {
+  const game = lobbyManager.getGame(lobbyId);
+  if (!game || game.status === 'finished') return false;
+  const p = game.players[game.currentTurnIndex];
+  let r, action;
+  if (game.awaitingColor) {
+    if (!timeout) return false;
+    // el color que más tiene en la mano
+    const counts = {};
+    p.hand.forEach((c) => { if (c.color !== 'Wild') counts[c.color] = (counts[c.color] || 0) + 1; });
+    const color = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || 'Red';
+    r = lobbyManager.chooseColor(lobbyId, p.id, color);
+    action = r.action || 'color_chosen';
+  } else {
+    if (!timeout && canPlayAny(game, p)) return false;
+    if (game.drawStackActive || game.hasDrawnCard[p.id]) {
+      r = lobbyManager.passTurn(lobbyId, p.id);
+      action = r.action || 'pass';
+    } else {
+      r = lobbyManager.drawCardForPlayer(lobbyId, p.id);
+      action = 'draw';
+    }
+  }
+  if (!r.success) return false;
+  armTurnTimer(lobbyId, game);
+  emitGameUpdate(lobbyId, game, p.id, { action, auto: timeout ? 'timeout' : true, ...(r.cardsDrawn && { cardsDrawn: r.cardsDrawn }), ...(r.drawCards && { cardsDrawn: r.drawCards }) });
+  return true;
+}
+
+function scheduleAuto(lobbyId) {
+  clearTimeout(autoTimers.get(lobbyId));
+  autoTimers.set(lobbyId, setTimeout(() => {
+    autoTimers.delete(lobbyId);
+    if (autoStep(lobbyId)) scheduleAuto(lobbyId);
+  }, AUTO_MS));
+}
+
+function onTurnTimeout(lobbyId) {
+  turnTimers.delete(lobbyId);
+  const game = lobbyManager.getGame(lobbyId);
+  if (!game) return;
+  // Mesa abandonada: no seguir jugando solos
+  if (!lobbyManager.lobbies.has(lobbyId)) {
+    lobbyManager.games.delete(lobbyId);
+    clearTimeout(autoTimers.get(lobbyId));
+    return;
+  }
+  const seq = game.turnSeq;
+  for (let i = 0; i < 3 && game.turnSeq === seq && autoStep(lobbyId, true); i++);
+  scheduleAuto(lobbyId);
 }
 
 const sameAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -789,6 +869,8 @@ io.on('connection', (socket) => {
     if (result.success) {
       const game = result.game;
       const firstCard = game.getCurrentCard();
+      armTurnTimer(data.lobbyId, game);
+      scheduleAuto(data.lobbyId);
       io.to(data.lobbyId).emit('game:started', { gameState: publicGame(game), firstCard });
       io.to(data.lobbyId).emit('gameStarted', { gameState: publicGame(game), firstCard });
       game.players.forEach(player => {
@@ -808,6 +890,8 @@ io.on('connection', (socket) => {
     const result = lobbyManager.playCard(data.lobbyId, currentUserId, data.cardIndex);
     if (result.success) {
       const game = result.game;
+      armTurnTimer(data.lobbyId, game);
+      scheduleAuto(data.lobbyId);
       const updateData = {
         gameState: publicGame(game),
         playedCard: result.playedCard,
@@ -841,43 +925,21 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('game:drawCard', (data) => {
-    console.log('🎯 Robando carta:', data);
-    const result = lobbyManager.drawCardForPlayer(data.lobbyId, currentUserId);
-    if (result.success) {
-      const game = result.game;
-      const player = game.players.find(p => p.id === currentUserId);
-      if (player) io.to(socket.id).emit('game:yourHand', player.hand);
-      const updateData = { gameState: publicGame(game), playerPlayed: game.players.find(p => p.id === currentUserId)?.username || 'Unknown', newTurnIndex: game.currentTurnIndex, action: 'draw', currentPlayerName: game.players[game.currentTurnIndex]?.username || null, currentActiveColor: game.currentActiveColor };
-      io.to(data.lobbyId).emit('game:update', updateData);
-    } else {
-      socket.emit('game:error', result.error);
-    }
+  // Robar, pasar y elegir color comparten el mismo cierre: reloj, aviso a la mesa y jugada automática
+  const turnAction = (event, fn, action) => socket.on(event, (data) => {
+    const result = fn(data);
+    if (!result.success) return socket.emit('game:error', result.error);
+    armTurnTimer(data.lobbyId, result.game);
+    emitGameUpdate(data.lobbyId, result.game, currentUserId, {
+      action: result.action || action,
+      ...(result.cardsDrawn && { cardsDrawn: result.cardsDrawn }),
+      ...(result.drawCards && { cardsDrawn: result.drawCards }),
+    });
+    scheduleAuto(data.lobbyId);
   });
-
-  socket.on('game:passTurn', (data) => {
-    console.log('⏭️ Pasando turno:', data);
-    const result = lobbyManager.passTurn(data.lobbyId, currentUserId);
-    if (result.success) {
-      const game = result.game;
-      const updateData = { gameState: publicGame(game), playerPlayed: game.players.find(p => p.id === currentUserId)?.username || 'Unknown', newTurnIndex: game.currentTurnIndex, action: 'pass', currentPlayerName: game.players[game.currentTurnIndex]?.username || null, currentActiveColor: game.currentActiveColor };
-      io.to(data.lobbyId).emit('game:update', updateData);
-    } else {
-      socket.emit('game:error', result.error);
-    }
-  });
-
-  socket.on('game:chooseColor', (data) => {
-    console.log('🎨 Eligiendo color:', data);
-    const result = lobbyManager.chooseColor(data.lobbyId, currentUserId, data.color, data.cardIndex);
-    if (result.success) {
-      const game = result.game;
-      const updateData = { gameState: publicGame(game), playerPlayed: game.players.find(p => p.id === currentUserId)?.username || 'Unknown', newTurnIndex: game.currentTurnIndex, action: 'color_chosen', currentPlayerName: game.players[game.currentTurnIndex]?.username || null, currentActiveColor: game.currentActiveColor };
-      io.to(data.lobbyId).emit('game:update', updateData);
-    } else {
-      socket.emit('game:error', result.error);
-    }
-  });
+  turnAction('game:drawCard', (d) => lobbyManager.drawCardForPlayer(d.lobbyId, currentUserId), 'draw');
+  turnAction('game:passTurn', (d) => lobbyManager.passTurn(d.lobbyId, currentUserId), 'pass');
+  turnAction('game:chooseColor', (d) => lobbyManager.chooseColor(d.lobbyId, currentUserId, d.color), 'color_chosen');
 
   socket.on('game:getLobbyInfo', (data) => {
     console.log('📋 Solicitando info del lobby:', data);

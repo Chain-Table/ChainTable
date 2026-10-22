@@ -48,6 +48,11 @@ export interface GameState {
   // Mecánicas especiales
   drawStackCount: number; // Cartas acumuladas por +2/+4
   drawStackActive: boolean;
+  turnSeq?: number;
+  turnMs?: number;
+  turnMsLeft?: number | null; // ms que le quedan al turno al momento de recibir el estado
+  drawnThisTurn?: boolean;
+  awaitingColor?: boolean;
   hasDrawnCard: Record<string, boolean>; // Por socketId
 
   // Resultados
@@ -116,6 +121,7 @@ export interface GameUpdateData {
   currentPlayerName: string | null;
   currentActiveColor: string | null;
   cardsDrawn?: number;
+  auto?: boolean | "timeout"; // jugada hecha por el server (sin jugada posible o tiempo agotado)
 }
 
 export interface GameLogEntry {

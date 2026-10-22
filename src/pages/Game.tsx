@@ -6,7 +6,7 @@ import { useSocket } from "../hooks/useSocket";
 import { getUserSession } from "../utils/userSession";
 import { displayName, isValidPlay } from "../utils/gameUtils";
 import ColorPicker from "../components/ColorPicker";
-import { Avatar, CenterPiles, Hand, OpponentSeat } from "../components/Table";
+import { Avatar, CenterPiles, Hand, OpponentSeat, TurnClock } from "../components/Table";
 import type { Card as CardType, GameLogEntry, GameState } from "../types/game";
 import { NETWORKS, fmtAmount, type NetworkKey } from "../config/chains";
 import { tErr } from "../i18n";
@@ -496,12 +496,16 @@ const Game: React.FC = () => {
           >
             {isMyTurn ? t("your_turn") : t("turn_of", { player: displayName(turnPlayer?.username) })}
           </span>
+          {gameState.status === "in_game" && gameState.turnMsLeft != null && (
+            <TurnClock key={gameState.turnSeq} msLeft={gameState.turnMsLeft} total={gameState.turnMs ?? 15000} />
+          )}
           {playerHand.length === 1 && (
             <span className="px-3 py-0.5 rounded-full bg-gradient-to-r from-red-500 to-orange-500 font-extrabold animate-bounce">
               ¡UNO!
             </span>
           )}
-          {isMyTurn && (
+          {/* Sin jugada se pasa solo; el botón queda para guardarse una carta robada */}
+          {isMyTurn && gameState.drawnThisTurn && (
             <button
               onClick={passTurn}
               disabled={isLoading}

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Card, { CardBack } from "./Card";
 import type { Card as CardType, GamePlayer } from "../types/game";
@@ -18,6 +18,42 @@ export const Avatar: React.FC<{ seed: string; size?: number; isTurn?: boolean }>
         className="relative w-full h-full rounded-full ring-2 ring-black/50"
         style={{ background: `radial-gradient(circle at 30% 30%, hsl(${h2} 90% 70%), hsl(${h1} 75% 45%) 70%)` }}
       />
+    </div>
+  );
+};
+
+/** Reloj del turno: anillo que se vacía y segundos restantes. Remontar (key) en cada turno nuevo. */
+export const TurnClock: React.FC<{ msLeft: number; total: number }> = ({ msLeft, total }) => {
+  const [end] = useState(() => Date.now() + msLeft);
+  const [left, setLeft] = useState(msLeft);
+  useEffect(() => {
+    const id = setInterval(() => setLeft(Math.max(0, end - Date.now())), 200);
+    return () => clearInterval(id);
+  }, [end]);
+  const secs = Math.ceil(left / 1000);
+  const urgent = left <= 5000;
+  const R = 16;
+  const C = 2 * Math.PI * R;
+  return (
+    <div role="timer" aria-label={`${secs}s`} className={`relative w-11 h-11 shrink-0 ${urgent ? "animate-heartbeat" : ""}`}>
+      <svg viewBox="0 0 40 40" className="w-full h-full -rotate-90">
+        <circle cx="20" cy="20" r={R} fill="rgba(0,0,0,.5)" stroke="rgba(255,255,255,.15)" strokeWidth="4" />
+        <circle
+          cx="20"
+          cy="20"
+          r={R}
+          fill="none"
+          stroke={urgent ? "#ef4444" : "#facc15"}
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={C}
+          strokeDashoffset={C * (1 - left / total)}
+          style={{ transition: "stroke-dashoffset .2s linear, stroke .3s" }}
+        />
+      </svg>
+      <span className={`absolute inset-0 flex items-center justify-center text-sm font-extrabold ${urgent ? "text-red-300" : "text-white"}`}>
+        {secs}
+      </span>
     </div>
   );
 };

@@ -219,6 +219,8 @@ export function useGame(lobbyId: string): UseGameReturn {
     // Game update
     const handleGameUpdate = (data: GameUpdateData) => {
       setGameState((prev) => ({ ...prev, ...data.gameState }));
+      // Si el server eligió el color por mí (tiempo agotado), cerrar el selector
+      if (!data.gameState.awaitingColor) setShowColorPicker(false);
       setIsLoading(false);
       addActionLogEntry({
         action: data.action,
@@ -227,6 +229,12 @@ export function useGame(lobbyId: string): UseGameReturn {
         cardsDrawn: data.cardsDrawn,
       });
       
+      // Jugadas que hizo el server por mí
+      if (data.auto && data.playerPlayed === session?.username && ['draw', 'pass'].includes(data.action)) {
+        showGameMessage(i18n.t(data.auto === 'timeout' ? 'msg_timeout' : data.action === 'draw' ? 'msg_auto_draw' : 'msg_auto_pass'));
+        return;
+      }
+
       // Mostrar mensajes según la acción
       switch (data.action) {
         case 'draw':
