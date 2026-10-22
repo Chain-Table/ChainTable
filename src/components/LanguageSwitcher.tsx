@@ -8,7 +8,7 @@ export default function LanguageSwitcher() {
     i18n.changeLanguage(next)
     try {
       localStorage.setItem('i18nextLng', next)
-    } catch {}
+    } catch { /* ignore */ }
   }
 
   // Show current language (ES/EN) — not the target language.

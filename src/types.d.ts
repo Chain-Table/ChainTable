@@ -1,4 +1,3 @@
-declare module '@rainbow-me/rainbowkit';
 
 // Deep import for RainbowKit locales (not exported via package.json exports)
 declare module '@rainbow-me/rainbowkit/dist/locales' {

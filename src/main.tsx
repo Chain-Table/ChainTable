@@ -6,18 +6,11 @@ import './i18n'
 import merge from 'lodash.merge'
 import '@rainbow-me/rainbowkit/styles.css'
 
-import {
-  RainbowKitProvider,
-  darkTheme,
-  getDefaultWallets,
-} from '@rainbow-me/rainbowkit'
-import { WagmiProvider, createConfig, http } from 'wagmi'
-import {
-  sepolia,
-} from 'wagmi/chains'
+import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
+import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ronin, roninSaigon, abstract } from './chains'
 import { BrowserRouter } from "react-router-dom";
+import { wagmiConfig } from './config/wagmi'
 
 
 const queryClient = new QueryClient({
@@ -28,26 +21,6 @@ const queryClient = new QueryClient({
       retry: false,
     },
   },
-})
-
-// Configurar connectors de wallets
-const { connectors } = getDefaultWallets({
-  appName: 'Chain Table',
-  projectId: 'f07abaf1c72667be12516c80f07650ff',
-})
-
-// Configuración custom con transportes específicos (evita eth.merkle.io)
-// Solo incluir chains que realmente uses
-const config = createConfig({
-  chains: [sepolia, ronin, roninSaigon, abstract],
-  connectors,
-  transports: {
-    [sepolia.id]: http(import.meta.env.VITE_SEPOLIA_RPC || 'https://rpc.sepolia.org'),
-    [ronin.id]: http(import.meta.env.VITE_RONIN_RPC || 'https://api.roninchain.com/rpc'),
-    [roninSaigon.id]: http(import.meta.env.VITE_RONIN_SAIGON_RPC || 'https://saigon-testnet.roninchain.com/rpc'),
-    [abstract.id]: http(),
-  },
-  ssr: false,
 })
 
 // 👇 inferimos el tipo desde darkTheme()
@@ -79,7 +52,7 @@ const myTheme: RainbowTheme = merge(darkTheme(), {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <WagmiProvider config={config}>
+    <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider 
           theme={myTheme}

@@ -56,8 +56,7 @@ export interface SocketEvents {
   'game:error': (message: string) => void;
   'game:lobbyInfo': (data: { success: boolean; lobby?: any; error?: string }) => void;
   'game:gameInfo': (data: { success: boolean; game?: GameState; error?: string }) => void;
-  'game:distributePrizes': (data: { lobbyId: string; winners: string[]; mode: string }) => void;
-  'game:prizesDistributed': (data: { success: boolean; txHash: string; message: string }) => void;
+  'game:prizesDistributed': (data: { success: boolean; txHash: string; explorerUrl: string; winners: string[] }) => void;
   'game:prizeError': (data: { error: string }) => void;
 
   // Eventos de conexión
@@ -253,12 +252,6 @@ class SocketService {
     await this.ensureConnected();
     console.debug('socketService.reconnectToLobby ->', { lobbyId, userId });
     this.emit('lobby:reconnect', { lobbyId, userId });
-  }
-
-  async notifyPrizeDistributed(data: { txHash: string; lobbyId: string; explorerUrl?: string }): Promise<void> {
-    await this.ensureConnected();
-    console.debug('socketService.notifyPrizeDistributed ->', data);
-    this.emit('game:prizeDistributed', data);
   }
 
   // Métodos para escuchar eventos

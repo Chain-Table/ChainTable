@@ -6,15 +6,15 @@ try {
   if (raw) {
     userSession = JSON.parse(raw);
   }
-} catch (e) {
+} catch {
   // ignore parse errors
   userSession = null;
 }
 
-// Crear sesión EVM con dirección de wallet como username
-export function createUserSession(walletAddress: string): { id: string; username: string; walletAddress: string } {
-  if (!walletAddress) {
-    throw new Error('La dirección de wallet es requerida');
+// Crear sesión: con alias (wallet opcional) o con la wallet como nombre
+export function createUserSession(username: string, walletAddress = ''): { id: string; username: string; walletAddress: string } {
+  if (!username) {
+    throw new Error('Elegí un alias o conectá tu wallet');
   }
   // Persistencia de userId
   let uniqueId = localStorage.getItem('userId');
@@ -22,16 +22,18 @@ export function createUserSession(walletAddress: string): { id: string; username
     uniqueId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     localStorage.setItem('userId', uniqueId);
   }
-  userSession = {
-    id: uniqueId,
-    username: walletAddress, // La dirección ES el username
-    walletAddress: walletAddress
-  };
+  userSession = { id: uniqueId, username, walletAddress };
   try {
     localStorage.setItem('userSession', JSON.stringify(userSession));
-  } catch (e) {}
-  console.log(`👤 Sesión EVM creada: ${walletAddress} (${uniqueId})`);
+  } catch { /* ignore */ }
   return userSession;
+}
+
+// Vincular (o cambiar) la wallet de la sesión; si el nombre era la wallet vieja, se actualiza también
+export function setSessionWallet(walletAddress: string) {
+  const s = getUserSession();
+  if (!s || s.walletAddress === walletAddress) return;
+  createUserSession(!s.username || s.username === s.walletAddress ? walletAddress : s.username, walletAddress);
 }
 
 // Obtener sesión actual (no crear una nueva automáticamente para EVM-only)
@@ -43,7 +45,7 @@ export function getUserSession(): { id: string; username: string; walletAddress:
       if (raw) {
         userSession = JSON.parse(raw);
       }
-    } catch (e) {
+    } catch {
       userSession = null;
     }
   }
@@ -55,7 +57,7 @@ export function clearUserSession(): void {
   userSession = null;
   try {
     localStorage.removeItem('userSession');
-  } catch (e) {}
+  } catch { /* ignore */ }
 }
 
 // Funciones de conveniencia

@@ -1,20 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { socketService } from '../services/socketService';
 import { getUserSession } from '../utils/userSession';
-import type { LobbyType, CreateLobbyFormData, Lobby } from '../types/lobby';
+import type { LobbyType, CreateLobbyFormData, Lobby, LobbySummary } from '../types/lobby';
 
 interface UseSocketReturn {
   isConnected: boolean;
   isLoading: boolean;
   error: string | null;
-  activeLobbies: Array<{
-    id: string;
-    name: string;
-    type: LobbyType;
-    status: string;
-    playerCount: number;
-    maxPlayers: number;
-  }>;
+  activeLobbies: LobbySummary[];
   createLobby: (data: CreateLobbyFormData, creatorId: string, creatorUsername: string) => Promise<Lobby>;
   joinLobby: (lobbyId: string, password?: string) => Promise<void>;
   joinLobbyOnchain: (lobbyId: string, password?: string, onchain?: { txHash: string; contract: string; chain: string }) => Promise<void>;
@@ -29,14 +22,7 @@ export const useSocket = (): UseSocketReturn => {
   const [isConnected, setIsConnected] = useState<boolean>(() => socketService.isConnected);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeLobbies, setActiveLobbies] = useState<Array<{
-    id: string;
-    name: string;
-    type: LobbyType;
-    status: string;
-    playerCount: number;
-    maxPlayers: number;
-  }>>([]);
+  const [activeLobbies, setActiveLobbies] = useState<LobbySummary[]>([]);
 
   // Conectar al servidor WebSocket
   const connect = useCallback(async () => {
@@ -80,7 +66,7 @@ export const useSocket = (): UseSocketReturn => {
     return new Promise<Lobby>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error('Timeout: El servidor no respondió'));
-      }, 10000);
+      }, 30000); // mesas pagas: el server espera confirmaciones on-chain
 
       const handleResponse = (response: { success: boolean; lobby?: Lobby; error?: string }) => {
         clearTimeout(timeoutId);
@@ -100,7 +86,7 @@ export const useSocket = (): UseSocketReturn => {
 
       // Extraer walletAddress de la sesión del usuario
       const userSession = getUserSession();
-      const walletAddress = userSession?.walletAddress || creatorUsername;
+      const walletAddress = userSession?.walletAddress || '';
 
       socketService.on('lobby:created', handleResponse);
       socketService.createLobby(data, creatorId, creatorUsername, walletAddress);
@@ -127,10 +113,10 @@ export const useSocket = (): UseSocketReturn => {
       }
       const playerId = userSession.id;
       const username = userSession.username;
-      const walletAddress = userSession.walletAddress || username; // Usar wallet si existe
+      const walletAddress = userSession.walletAddress || ''; // jugadores con alias pueden no tener wallet
       const timeoutId = setTimeout(() => {
         reject(new Error('Timeout: El servidor no respondió'));
-      }, 10000);
+      }, 30000); // mesas pagas: el server espera confirmaciones on-chain
 
       const handleResponse = (response: { success: boolean; lobby?: Lobby; error?: string }) => {
         clearTimeout(timeoutId);
@@ -169,10 +155,10 @@ export const useSocket = (): UseSocketReturn => {
       }
       const playerId = userSession.id;
       const username = userSession.username;
-      const walletAddress = userSession.walletAddress || username; // Usar wallet si existe
+      const walletAddress = userSession.walletAddress || ''; // jugadores con alias pueden no tener wallet
       const timeoutId = setTimeout(() => {
         reject(new Error('Timeout: El servidor no respondió'));
-      }, 10000);
+      }, 30000); // mesas pagas: el server espera confirmaciones on-chain
 
       const handleResponse = (response: { success: boolean; lobby?: Lobby; error?: string }) => {
         clearTimeout(timeoutId);
@@ -214,7 +200,7 @@ export const useSocket = (): UseSocketReturn => {
     return new Promise<void>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error('Timeout: El servidor no respondió'));
-      }, 10000);
+      }, 30000); // mesas pagas: el server espera confirmaciones on-chain
 
       const handleResponse = (response: { success: boolean; lobbyId: string }) => {
         clearTimeout(timeoutId);
@@ -283,9 +269,10 @@ export const useSocket = (): UseSocketReturn => {
           id: lobby.id,
           name: lobby.name,
           type: lobby.type,
-          status: 'Esperando jugadores',
+          status: 'waiting',
           playerCount: lobby.currentPlayers,
           maxPlayers: lobby.maxPlayers,
+          ...(lobby.mode && { mode: lobby.mode }),
           ...(lobby.onchain && { onchain: lobby.onchain }),
           ...(lobby.entryCost && { entryCost: lobby.entryCost })
         })),
@@ -293,9 +280,10 @@ export const useSocket = (): UseSocketReturn => {
           id: lobby.id,
           name: lobby.name,
           type: lobby.type,
-          status: 'En partida',
+          status: 'playing',
           playerCount: lobby.players,
           maxPlayers: lobby.players,
+          ...(lobby.mode && { mode: lobby.mode }),
           ...(lobby.onchain && { onchain: lobby.onchain }),
           ...(lobby.entryCost && { entryCost: lobby.entryCost })
         }))

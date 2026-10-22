@@ -2,111 +2,9 @@
 export type LobbyType = 'publico' | 'privado' | 'pago';
 export type LobbyStatus = 'waiting' | 'starting' | 'in-progress' | 'finished' | 'cancelled';
 
-// Redes blockchain soportadas
-export type SupportedNetwork = 'ronin' | 'ronin-saigon' | 'sepolia';
-
-// Monedas soportadas por red
-export type SupportedToken = 'ETH' | 'RON' | 'RICE' | 'RONKE';
-
-// Configuración de tokens por red
-export interface TokenConfig {
-  symbol: SupportedToken;
-  name: string;
-  decimals: number;
-  address?: string; // undefined para tokens nativos
-}
-
-// Configuración de redes
-export interface NetworkConfig {
-  name: string;
-  chainId: number;
-  rpcUrl: string;
-  blockExplorer: string;
-  nativeCurrency: TokenConfig;
-  supportedTokens: TokenConfig[];
-}
-
-// Configuraciones de redes disponibles
-export const NETWORK_CONFIGS: Record<SupportedNetwork, NetworkConfig> = {
-  ronin: {
-    name: 'Ronin',
-    chainId: 2020,
-    rpcUrl: 'https://api.roninchain.com/rpc',
-    blockExplorer: 'https://app.roninchain.com',
-    nativeCurrency: {
-      symbol: 'RON',
-      name: 'Ronin',
-      decimals: 18
-    },
-    supportedTokens: [
-      {
-        symbol: 'RON',
-        name: 'Ronin',
-        decimals: 18
-      },
-      {
-        symbol: 'RICE',
-        name: 'Rice Token',
-        decimals: 18,
-        address: '0x9049ca10dd4cba0248226b4581443201f8f225c6'
-      },
-      {
-        symbol: 'RONKE',
-        name: 'Ronke Token',
-        decimals: 18,
-        address: '0xf988f63bf26c3ed3fbf39922149e3e7b1e5c27cb'
-      }
-    ]
-  },
-  'ronin-saigon': {
-    name: 'Ronin Saigon Testnet',
-    chainId: 2021,
-    rpcUrl: 'https://saigon-testnet.roninchain.com/rpc',
-    blockExplorer: 'https://saigon-app.roninchain.com',
-    nativeCurrency: {
-      symbol: 'RON',
-      name: 'Ronin',
-      decimals: 18
-    },
-    supportedTokens: [
-      {
-        symbol: 'RON',
-        name: 'Ronin',
-        decimals: 18
-      },
-      {
-        symbol: 'RICE',
-        name: 'Rice Token',
-        decimals: 18,
-        address: '0x' // TODO: Agregar dirección real del token RICE en Saigon
-      },
-      {
-        symbol: 'RONKE',
-        name: 'Ronke Token',
-        decimals: 18,
-        address: '0x' // TODO: Agregar dirección real del token RONKE en Saigon
-      }
-    ]
-  },
-  sepolia: {
-    name: 'Sepolia Testnet',
-    chainId: 11155111,
-    rpcUrl: 'https://rpc.sepolia.org',
-    blockExplorer: 'https://sepolia.etherscan.io',
-    nativeCurrency: {
-      symbol: 'ETH',
-      name: 'Sepolia Ether',
-      decimals: 18
-    },
-    supportedTokens: [
-      {
-        symbol: 'ETH',
-        name: 'Sepolia Ether',
-        decimals: 18
-      }
-    ]
-  }
-};
+// Redes donde se juega con plata (ver src/config/chains.ts)
+import type { NetworkKey } from '../config/chains';
+export type SupportedNetwork = NetworkKey;
 
 // Configuración de cada tipo de lobby
 export interface LobbyTypeConfig {
@@ -121,23 +19,34 @@ export interface LobbyTypeConfig {
 // Datos del formulario para crear lobby
 export interface CreateLobbyFormData {
   name: string;
+  onchain?: { chain: SupportedNetwork; lobbyId: string };
   type: LobbyType;
   password?: string;
   entryCost?: string; // Amount as string to handle decimals
-  token?: SupportedToken;
   network?: SupportedNetwork;
   mode?: 'BEAST' | 'CLASSIC';
   maxPlayers?: number;
   description?: string;
 }
 
+// Mesa tal como llega en la lista pública (lobby:list-updated)
+export interface LobbySummary {
+  id: string;
+  name: string;
+  type: LobbyType;
+  status: 'waiting' | 'playing';
+  playerCount: number;
+  maxPlayers: number;
+  mode?: 'BEAST' | 'CLASSIC';
+  entryCost?: string; // wei
+  onchain?: { chain: SupportedNetwork; lobbyId: string; entryFee: string };
+}
+
 // Configuración de pago del lobby
 export interface PaymentConfig {
   network: SupportedNetwork;
-  token: SupportedToken;
   amount: string; // En unidades legibles (ej: "0.01")
-  amountWei?: string; // En wei/unidades mínimas
-  tokenAddress?: string; // Para tokens ERC20
+  amountWei?: string;
 }
 
 // Estructura completa de un lobby

@@ -1,3 +1,4 @@
+import type { NetworkKey } from '../config/chains';
 // Tipos para el juego UNO
 export interface Card {
   id?: string;
@@ -34,6 +35,8 @@ export interface GameState {
   status: "waiting" | "in_game" | "finished";
   players: GamePlayer[];
   hostId: string;
+  maxPlayers?: number;
+  mode?: 'BEAST' | 'CLASSIC';
 
   // Estado del juego
   drawPile: Card[];
@@ -55,15 +58,11 @@ export interface GameState {
   type?: "gratis" | "publico" | "privado" | "pago";
   entryCost?: string; // Entry cost in wei for paid lobbies
   onchain?: {
-    chain: "sepolia" | "ronin" | "ronin-saigon";
+    chain: NetworkKey;
     contract: string;
-    lobbyId: number;
-    token?: string;
-    entryFee?: string;
-    txHash?: string;
-    joinTxHash?: string;
+    lobbyId: string;
+    entryFee: string; // wei, leído del contrato por el servidor
   };
-  onchainLobbyId?: number;
 }
 
 // Eventos WebSocket del juego
