@@ -52,3 +52,6 @@ cache/
 .next/
 broadcast/*/31337/
 !.env.example
+
+# Vínculo local con el proyecto de Vercel
+.vercel
