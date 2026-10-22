@@ -229,9 +229,9 @@ export function useGame(lobbyId: string): UseGameReturn {
         cardsDrawn: data.cardsDrawn,
       });
       
-      // Jugadas que hizo el server por mí
+      // Se me acabó el tiempo: el server robó/pasó por mí
       if (data.auto && data.playerPlayed === session?.username && ['draw', 'pass'].includes(data.action)) {
-        showGameMessage(i18n.t(data.auto === 'timeout' ? 'msg_timeout' : data.action === 'draw' ? 'msg_auto_draw' : 'msg_auto_pass'));
+        showGameMessage(i18n.t('msg_timeout'));
         return;
       }
 

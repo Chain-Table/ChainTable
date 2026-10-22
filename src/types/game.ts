@@ -121,7 +121,7 @@ export interface GameUpdateData {
   currentPlayerName: string | null;
   currentActiveColor: string | null;
   cardsDrawn?: number;
-  auto?: boolean | "timeout"; // jugada hecha por el server (sin jugada posible o tiempo agotado)
+  auto?: "timeout"; // jugada hecha por el server porque se acabó el tiempo
 }
 
 export interface GameLogEntry {

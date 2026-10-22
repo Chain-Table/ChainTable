@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useGame } from "../hooks/useGame";
 import { useSocket } from "../hooks/useSocket";
 import { getUserSession } from "../utils/userSession";
-import { displayName, isValidPlay } from "../utils/gameUtils";
+import { displayName, isValidPlay, playOrigin } from "../utils/gameUtils";
 import ColorPicker from "../components/ColorPicker";
 import { Avatar, CenterPiles, Hand, OpponentSeat, TurnClock } from "../components/Table";
 import type { Card as CardType, GameLogEntry, GameState } from "../types/game";
@@ -60,6 +60,27 @@ const Game: React.FC = () => {
     leaveGame,
   } = useGame(lobbyId || "");
   const { cancelLobby } = useSocket();
+
+  // Al terminar, la mesa queda unos segundos con el cartel del ganador antes del podio
+  const [showResults, setShowResults] = useState(false);
+  useEffect(() => {
+    if (!isGameFinished) return setShowResults(false);
+    const id = setTimeout(() => setShowResults(true), 2400);
+    return () => clearTimeout(id);
+  }, [isGameFinished]);
+
+  // Quién tenía el turno antes de este render = quién tiró la carta que acaba de caer en la pila
+  const lastTurn = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    lastTurn.current = gameState?.players[gameState.currentTurnIndex]?.id;
+  });
+  const flyOrigin = useCallback(() => {
+    if (lastTurn.current === session?.id) return playOrigin.rect;
+    const seat = [...document.querySelectorAll<HTMLElement>(`[data-seat="${CSS.escape(lastTurn.current ?? "")}"]`)].find(
+      (el) => el.offsetParent
+    );
+    return seat?.getBoundingClientRect() ?? null;
+  }, [session?.id]);
 
   if (!lobbyId || !session) {
     return null; // Se redirigirá en useEffect
@@ -281,15 +302,23 @@ const Game: React.FC = () => {
   }
 
   // ---------- Fin de partida ----------
-  if (isGameFinished) {
-    const ranked = winners.length ? winners : [];
-    const iWon = ranked[0]?.username === session.username;
-    // Orden visual del podio: 2º, 1º, 3º
+  if (isGameFinished && showResults) {
+    const ranked = winners;
+    const me = ranked.find((w) => w.username === session.username);
+    const iWon = me?.rank === 1;
+    // Orden visual del podio: 2º, 1º, 3º. Se revela de abajo hacia arriba: 3º, 2º y al final el 1º
     const podium = [ranked[1], ranked[0], ranked[2]];
-    const heights = ["h-28", "h-40", "h-20"];
-    const ranks = [2, 1, 3];
+    const STEP = {
+      1: { h: "h-36 sm:h-44", bg: "from-yellow-200 via-yellow-400 to-amber-600 text-amber-950 btn-shine", delay: 1 },
+      2: { h: "h-24 sm:h-32", bg: "from-slate-100 via-slate-300 to-slate-500 text-slate-700", delay: 0.55 },
+      3: { h: "h-16 sm:h-24", bg: "from-orange-200 via-orange-400 to-orange-700 text-orange-950", delay: 0.1 },
+    } as const;
     return (
-      <div className={`${PAGE_BG} relative overflow-hidden px-4 py-10`}>
+      <div className={`${PAGE_BG} relative overflow-hidden px-4 py-10 sm:py-14`}>
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-20 -translate-x-1/2 w-[680px] max-w-[130vw] h-[520px] bg-[radial-gradient(closest-side,rgba(250,204,21,0.22),transparent)]"
+        />
         {iWon &&
           Array.from({ length: 40 }).map((_, i) => (
             <span
@@ -304,43 +333,57 @@ const Game: React.FC = () => {
             />
           ))}
         <div className="relative max-w-3xl mx-auto text-center">
-          <h1 className="text-5xl sm:text-6xl font-extrabold bg-gradient-to-r from-yellow-300 via-orange-400 to-red-500 bg-clip-text text-transparent">
-            {iWon ? t("you_won") : t("game_finished")}
+          <p className="text-emerald-300/80 text-xs sm:text-sm uppercase tracking-[0.3em] font-bold">{t("game_finished")}</p>
+          <h1 className="logo text-5xl sm:text-7xl mt-3 animate-pop">
+            {iWon ? t("you_won") : t("winner_is", { player: displayName(ranked[0]?.username) })}
           </h1>
+          {me && !iWon && <p className="mt-4 text-lg text-white/70 font-semibold">{t("you_placed", { rank: me.rank })}</p>}
 
-          <div className="mt-12 flex items-end justify-center gap-3 sm:gap-5">
-            {podium.map((w, col) =>
-              w ? (
-                <div key={w.username} className="flex flex-col items-center w-28 sm:w-36">
-                  <Avatar seed={w.walletAddress || w.username} size={col === 1 ? 72 : 56} />
-                  <span className="font-bold text-sm mt-2 max-w-full truncate">{displayName(w.username)}</span>
-                  {prizes?.[ranks[col] - 1] !== undefined && (
-                    <span className="text-yellow-300 font-bold text-sm">{fmt(prizes[ranks[col] - 1], network)}</span>
-                  )}
+          <div className="mt-12 flex items-end justify-center gap-2 sm:gap-4">
+            {podium.map((w, col) => {
+              if (!w) return null;
+              const rank = ([2, 1, 3] as const)[col];
+              const step = STEP[rank];
+              const prize = prizes?.[rank - 1];
+              const isMe = w.username === session.username;
+              return (
+                <div key={w.username} className="flex flex-col items-center w-[6.5rem] sm:w-36">
+                  <div className="animate-pop flex flex-col items-center max-w-full" style={{ animationDelay: `${step.delay + 0.45}s` }}>
+                    {rank === 1 && <span className="text-3xl sm:text-4xl mb-1 animate-float">👑</span>}
+                    <Avatar seed={w.walletAddress || w.username} size={rank === 1 ? 76 : 56} isTurn={rank === 1} />
+                    <span className="mt-2 font-extrabold text-sm sm:text-base max-w-full truncate">{displayName(w.username)}</span>
+                    {isMe && (
+                      <span className="mt-0.5 px-2 rounded-full bg-blue-500/30 text-blue-200 text-[11px] font-bold">{t("you_label")}</span>
+                    )}
+                    {prize !== undefined && <span className="text-yellow-300 font-extrabold text-sm">{fmt(prize, network)}</span>}
+                  </div>
                   <div
-                    className={`animate-rise mt-2 w-full ${heights[col]} rounded-t-xl flex items-start justify-center pt-2 text-3xl font-extrabold ${
-                      col === 1
-                        ? "bg-gradient-to-b from-yellow-300 to-yellow-600 text-yellow-900"
-                        : col === 0
-                        ? "bg-gradient-to-b from-slate-200 to-slate-400 text-slate-700"
-                        : "bg-gradient-to-b from-orange-300 to-orange-600 text-orange-900"
+                    className={`animate-rise mt-3 w-full ${step.h} rounded-t-2xl bg-gradient-to-b ${step.bg} flex items-start justify-center pt-2 shadow-[inset_0_3px_0_rgba(255,255,255,0.6),0_24px_40px_-12px_rgba(0,0,0,0.7)] ${
+                      isMe ? "ring-4 ring-blue-400/70" : ""
                     }`}
-                    style={{ animationDelay: `${[0.3, 0, 0.6][col]}s` }}
+                    style={{ animationDelay: `${step.delay}s` }}
                   >
-                    {ranks[col]}
+                    <span className="font-display text-4xl sm:text-5xl drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">{rank}</span>
                   </div>
                 </div>
-              ) : (
-                <div key={col} className="w-28 sm:w-36" />
-              )
-            )}
+              );
+            })}
           </div>
+          <div className="h-3 max-w-lg mx-auto rounded-full bg-black/50 blur-[3px]" />
 
           {ranked.length > 3 && (
-            <ol start={4} className="mt-6 space-y-1 text-white/60">
+            <ol className="mt-8 mx-auto max-w-sm space-y-2 text-left">
               {ranked.slice(3).map((w) => (
-                <li key={w.username} className="font-semibold text-sm">
-                  {w.rank}. {displayName(w.username)}
+                <li
+                  key={w.username}
+                  className={`animate-pop flex items-center gap-3 rounded-xl px-3 py-2 ring-1 ${
+                    w.username === session.username ? "bg-blue-500/15 ring-blue-400/40" : "bg-white/5 ring-white/10"
+                  }`}
+                  style={{ animationDelay: `${1.4 + (w.rank - 4) * 0.1}s` }}
+                >
+                  <span className="w-7 text-center font-display text-xl text-white/50">{w.rank}</span>
+                  <Avatar seed={w.walletAddress || w.username} size={28} />
+                  <span className="font-bold truncate">{displayName(w.username)}</span>
                 </li>
               ))}
             </ol>
@@ -368,7 +411,8 @@ const Game: React.FC = () => {
 
           <button
             onClick={leaveGame}
-            className="mt-10 px-10 py-4 rounded-2xl text-lg font-bold text-black bg-gradient-to-r from-yellow-300 to-orange-400 hover:scale-105 transition-transform"
+            className="btn-shine animate-pop mt-12 px-10 py-4 rounded-2xl text-lg font-bold text-black bg-gradient-to-r from-yellow-300 to-orange-400 shadow-[0_0_30px_rgba(250,204,21,0.35)]"
+            style={{ animationDelay: "1.6s" }}
           >
             {t("back_to_lobbies")}
           </button>
@@ -388,7 +432,8 @@ const Game: React.FC = () => {
   const topCard = gameState.discardPile?.[gameState.discardPile.length - 1] ?? null;
   const drawStackActive = (gameState.drawStackCount || 0) > 0;
   const hasMove = playerHand.some((c) => !topCard || isValidPlay(c, topCard, gameState.currentActiveColor, drawStackActive));
-  const mustDraw = isMyTurn && !hasMove;
+  const mustDraw = isMyTurn && !hasMove && !gameState.drawnThisTurn;
+  const mustPass = isMyTurn && !hasMove && !!gameState.drawnThisTurn;
 
   const logPanel = (
     <div className="space-y-1.5">
@@ -463,6 +508,7 @@ const Game: React.FC = () => {
             canDraw={isMyTurn && !isLoading}
             mustDraw={mustDraw}
             onDraw={drawCard}
+            flyOrigin={flyOrigin}
           />
         </div>
 
@@ -504,12 +550,14 @@ const Game: React.FC = () => {
               ¡UNO!
             </span>
           )}
-          {/* Sin jugada se pasa solo; el botón queda para guardarse una carta robada */}
+          {/* Después de robar: jugar la robada o pasar */}
           {isMyTurn && gameState.drawnThisTurn && (
             <button
               onClick={passTurn}
               disabled={isLoading}
-              className="ml-2 px-4 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-semibold disabled:opacity-40"
+              className={`ml-2 px-4 py-1.5 rounded-xl text-sm font-semibold disabled:opacity-40 transition-colors ${
+                mustPass ? "bg-yellow-400 text-black ring-4 ring-yellow-300/40 animate-pulse" : "bg-white/10 hover:bg-white/20"
+              }`}
             >
               {t("pass_turn")}
             </button>
@@ -526,6 +574,17 @@ const Game: React.FC = () => {
       </footer>
 
       <ColorPicker isVisible={showColorPicker} onColorSelect={chooseWildColor} />
+
+      {isGameFinished && winners[0] && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 backdrop-blur-[2px] animate-fade-in">
+          <div className="animate-pop mx-4 text-center px-10 py-8 rounded-3xl bg-gradient-to-b from-yellow-300 to-orange-500 text-black shadow-[0_0_90px_rgba(250,204,21,0.55)]">
+            <div className="text-6xl animate-float">🏆</div>
+            <div className="font-display text-4xl sm:text-5xl mt-2">
+              {winners[0].username === session.username ? t("you_won") : t("winner_is", { player: displayName(winners[0].username) })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

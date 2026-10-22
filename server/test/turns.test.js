@@ -34,7 +34,7 @@ const connect = () => io(`http://127.0.0.1:${PORT}`, { transports: ['websocket']
     const updates = [];
     a.on('game:update', (u) => updates.push(u));
     await sleep(TURN_MS * 2 + 2500);
-    assert.ok(updates.some((u) => u.auto), 'hubo jugadas automáticas');
+    assert.ok(updates.length && updates.every((u) => u.auto === "timeout"), "solo actúa el timeout");
     const last = updates[updates.length - 1].gameState;
     assert.ok(last.turnSeq >= 2, `el turno avanzó solo (turnSeq=${last.turnSeq})`);
     assert.ok(last.players.reduce((n, p) => n + p.cardCount, 0) > 14, 'robaron por timeout');

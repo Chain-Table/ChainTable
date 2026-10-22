@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Card, { CardBack } from "./Card";
 import type { Card as CardType, GamePlayer } from "../types/game";
-import { displayName, isValidPlay } from "../utils/gameUtils";
+import { displayName, isValidPlay, playOrigin } from "../utils/gameUtils";
 
 
 /** Avatar determinístico a partir de la wallet o el alias (mismo color en todas las pantallas). */
@@ -58,6 +58,24 @@ export const TurnClock: React.FC<{ msLeft: number; total: number }> = ({ msLeft,
   );
 };
 
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Anima un elemento desde `from` hasta donde quedó (FLIP), conservando su transform final. */
+function flyFrom(el: HTMLElement, from: DOMRect, delay = 0) {
+  if (reducedMotion()) return;
+  const to = el.getBoundingClientRect();
+  const dx = from.left + from.width / 2 - (to.left + to.width / 2);
+  const dy = from.top + from.height / 2 - (to.top + to.height / 2);
+  const end = el.style.transform || "none";
+  el.animate(
+    [
+      { transform: `translate(${dx}px, ${dy}px) scale(${from.width / to.width}) rotate(-8deg)`, opacity: 1 },
+      { transform: end, opacity: 1 },
+    ],
+    { duration: 480, delay, easing: "cubic-bezier(.2,.8,.25,1)", fill: "backwards" }
+  );
+}
+
 // Rotación pseudoaleatoria pero estable para cada carta de la pila
 const tilt = (i: number) => ((i * 37) % 21) - 10;
 
@@ -67,7 +85,7 @@ export const OpponentSeat: React.FC<{ player: GamePlayer; isTurn: boolean }> = (
   const shown = Math.min(count, 7);
   return (
     <div className={`flex flex-col items-center gap-1 transition-all duration-300 ${isTurn ? "scale-110" : "opacity-75"}`}>
-      <div className="relative h-14 w-24">
+      <div data-seat={player.id} className="relative h-14 w-24">
         {Array.from({ length: shown }).map((_, i) => {
           const off = i - (shown - 1) / 2;
           return (
@@ -87,7 +105,10 @@ export const OpponentSeat: React.FC<{ player: GamePlayer; isTurn: boolean }> = (
       >
         <Avatar seed={player.walletAddress || player.username} size={28} isTurn={isTurn} />
         <span className="text-white text-sm font-bold whitespace-nowrap max-w-28 truncate">{displayName(player.username)}</span>
-        <span className="min-w-6 h-6 px-1.5 rounded-full bg-white/15 text-white text-xs font-bold flex items-center justify-center">
+        <span
+          key={count}
+          className="animate-pop min-w-6 h-6 px-1.5 rounded-full bg-white/15 text-white text-xs font-bold flex items-center justify-center"
+        >
           {count}
         </span>
       </div>
@@ -111,10 +132,20 @@ export const CenterPiles: React.FC<{
   canDraw: boolean;
   mustDraw: boolean;
   onDraw: () => void;
-}> = ({ discardPile, activeColor, direction, drawStack, canDraw, mustDraw, onDraw }) => {
+  /** De dónde salió la última carta jugada (mi mano o el asiento del rival). */
+  flyOrigin?: () => DOMRect | null;
+}> = ({ discardPile, activeColor, direction, drawStack, canDraw, mustDraw, onDraw, flyOrigin }) => {
   const { t } = useTranslation();
   const glow = activeColor ? COLOR_HEX[activeColor] : undefined;
   const top = discardPile.length - 1;
+  const topRef = useRef<HTMLDivElement>(null);
+  const seenTop = useRef(top);
+  useLayoutEffect(() => {
+    if (top <= seenTop.current) return;
+    seenTop.current = top;
+    const from = flyOrigin?.();
+    if (topRef.current && from) flyFrom(topRef.current, from);
+  }, [top, flyOrigin]);
   return (
     <div className="relative flex items-center justify-center gap-8 sm:gap-14">
       {/* Dirección del juego */}
@@ -147,6 +178,7 @@ export const CenterPiles: React.FC<{
       {/* Mazo */}
       <button
         type="button"
+        id="draw-pile"
         onClick={onDraw}
         disabled={!canDraw}
         aria-label={t("draw_card")}
@@ -184,7 +216,8 @@ export const CenterPiles: React.FC<{
         {top >= 0 && (
           <div
             key={top}
-            className="relative animate-card-drop rounded-[10%]"
+            ref={topRef}
+            className="relative z-30 animate-card-drop rounded-[10%]"
             style={{
               ["--rot" as string]: `${tilt(top)}deg`,
               transform: `rotate(${tilt(top)}deg)`,
@@ -215,6 +248,15 @@ export const Hand: React.FC<{
   // Key estable por carta (color+valor+variante+ocurrencia) para animar solo las que entran
   const seen: Record<string, number> = {};
   const mid = (cards.length - 1) / 2;
+  // Cartas nuevas (robadas) salen volando desde el mazo; el reparto inicial usa la animación CSS
+  const els = useRef(new Map<string, HTMLDivElement>());
+  const known = useRef<Set<string> | null>(null);
+  useLayoutEffect(() => {
+    const keys = [...els.current.keys()];
+    const deck = known.current && document.getElementById("draw-pile")?.getBoundingClientRect();
+    if (deck) keys.filter((k) => !known.current!.has(k)).forEach((k, i) => flyFrom(els.current.get(k)!, deck, i * 90));
+    known.current = new Set(keys);
+  });
   const overlap = cards.length > 10 ? "-ml-14 sm:-ml-16" : cards.length > 6 ? "-ml-10 sm:-ml-12" : "-ml-6 sm:-ml-4";
   return (
     <div className="w-full overflow-x-auto overflow-y-visible [scrollbar-width:thin]">
@@ -224,10 +266,16 @@ export const Hand: React.FC<{
           seen[id] = (seen[id] ?? 0) + 1;
           const playable = isMyTurn && (!topCard || isValidPlay(card, topCard, activeColor, drawStackActive));
           const off = i - mid;
+          const key = `${id}-${seen[id]}`;
           return (
             <div
-              key={`${id}-${seen[id]}`}
-              className={`animate-card-deal hover:z-50 ${i ? overlap : ""}`}
+              key={key}
+              ref={(el) => {
+                if (el) els.current.set(key, el);
+                else els.current.delete(key);
+              }}
+              onClickCapture={(e) => (playOrigin.rect = e.currentTarget.getBoundingClientRect())}
+              className={`group hover:z-50 transition-[transform,margin] duration-300 ease-out ${known.current ? "" : "animate-card-deal"} ${i ? overlap : ""}`}
               style={{
                 transform: `rotate(${off * 2.5}deg) translateY(${Math.abs(off) * Math.abs(off) * 0.8}px)`,
                 animationDelay: `${Math.min(i, 8) * 40}ms`,

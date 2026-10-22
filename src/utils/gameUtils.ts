@@ -212,3 +212,6 @@ export function getRankName(rank: number): string {
 export const shortAddr = (addr = "") => (addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr);
 // Nombre a mostrar: el alias, o la wallet abreviada si el jugador entró solo con wallet
 export const displayName = (name = "") => (/^0x[0-9a-fA-F]{40}$/.test(name) ? shortAddr(name) : name);
+
+/** Dónde estaba la última carta que toqué en la mano: de ahí sale volando a la pila. */
+export const playOrigin: { rect: DOMRect | null } = { rect: null };

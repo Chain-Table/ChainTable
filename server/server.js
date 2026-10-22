@@ -566,14 +566,9 @@ function ownsId(id, token) {
   return !p || p.token === token;
 }
 
-// ===== Reloj de turno y jugadas automáticas =====
+// ===== Reloj de turno: solo actúa si se acaba el tiempo =====
 const TURN_MS = Number(process.env.TURN_MS) || 15000;
-const AUTO_MS = 900; // pausa antes de una jugada automática, para que se vea qué pasó
 const turnTimers = new Map(); // lobbyId -> { seq, t }
-const autoTimers = new Map();
-
-const canPlayAny = (game, p) =>
-  p.hand.some((c) => game.isValidPlay(c, game.getCurrentCard(), game.currentActiveColor, game.drawStackActive));
 
 function emitGameUpdate(lobbyId, game, playerId, extra = {}) {
   io.to(lobbyId).emit('game:update', {
@@ -584,7 +579,7 @@ function emitGameUpdate(lobbyId, game, playerId, extra = {}) {
     currentActiveColor: game.currentActiveColor,
     ...extra,
   });
-  // Penalidades y robos automáticos cambian manos ajenas: se mandan todas
+  // Penalidades y robos por timeout cambian manos ajenas: se mandan todas
   game.players.forEach((p) => io.to(p.socketId).emit('game:yourHand', p.hand));
 }
 
@@ -593,7 +588,6 @@ function armTurnTimer(lobbyId, game) {
   const prev = turnTimers.get(lobbyId);
   if (game.status === 'finished') {
     clearTimeout(prev?.t);
-    clearTimeout(autoTimers.get(lobbyId));
     turnTimers.delete(lobbyId);
     game.turnDeadline = null;
     return;
@@ -604,14 +598,13 @@ function armTurnTimer(lobbyId, game) {
   turnTimers.set(lobbyId, { seq: game.turnSeq, t: setTimeout(() => onTurnTimeout(lobbyId), TURN_MS) });
 }
 
-// Una jugada forzada para el jugador de turno. Sin `timeout` solo actúa si no tiene nada jugable.
-function autoStep(lobbyId, timeout = false) {
+// Jugada forzada por timeout: elige color, o roba y pasa
+function autoStep(lobbyId) {
   const game = lobbyManager.getGame(lobbyId);
   if (!game || game.status === 'finished') return false;
   const p = game.players[game.currentTurnIndex];
   let r, action;
   if (game.awaitingColor) {
-    if (!timeout) return false;
     // el color que más tiene en la mano
     const counts = {};
     p.hand.forEach((c) => { if (c.color !== 'Wild') counts[c.color] = (counts[c.color] || 0) + 1; });
@@ -619,7 +612,6 @@ function autoStep(lobbyId, timeout = false) {
     r = lobbyManager.chooseColor(lobbyId, p.id, color);
     action = r.action || 'color_chosen';
   } else {
-    if (!timeout && canPlayAny(game, p)) return false;
     if (game.drawStackActive || game.hasDrawnCard[p.id]) {
       r = lobbyManager.passTurn(lobbyId, p.id);
       action = r.action || 'pass';
@@ -630,16 +622,8 @@ function autoStep(lobbyId, timeout = false) {
   }
   if (!r.success) return false;
   armTurnTimer(lobbyId, game);
-  emitGameUpdate(lobbyId, game, p.id, { action, auto: timeout ? 'timeout' : true, ...(r.cardsDrawn && { cardsDrawn: r.cardsDrawn }), ...(r.drawCards && { cardsDrawn: r.drawCards }) });
+  emitGameUpdate(lobbyId, game, p.id, { action, auto: 'timeout', ...(r.cardsDrawn && { cardsDrawn: r.cardsDrawn }), ...(r.drawCards && { cardsDrawn: r.drawCards }) });
   return true;
-}
-
-function scheduleAuto(lobbyId) {
-  clearTimeout(autoTimers.get(lobbyId));
-  autoTimers.set(lobbyId, setTimeout(() => {
-    autoTimers.delete(lobbyId);
-    if (autoStep(lobbyId)) scheduleAuto(lobbyId);
-  }, AUTO_MS));
 }
 
 function onTurnTimeout(lobbyId) {
@@ -649,12 +633,10 @@ function onTurnTimeout(lobbyId) {
   // Mesa abandonada: no seguir jugando solos
   if (!lobbyManager.lobbies.has(lobbyId)) {
     lobbyManager.games.delete(lobbyId);
-    clearTimeout(autoTimers.get(lobbyId));
     return;
   }
   const seq = game.turnSeq;
-  for (let i = 0; i < 3 && game.turnSeq === seq && autoStep(lobbyId, true); i++);
-  scheduleAuto(lobbyId);
+  for (let i = 0; i < 3 && game.turnSeq === seq && autoStep(lobbyId); i++);
 }
 
 // Errores de ethers/RPC pueden traer la URL del RPC (con su API key): al cliente le llega un mensaje genérico
@@ -913,7 +895,6 @@ io.on('connection', (socket) => {
       const game = result.game;
       const firstCard = game.getCurrentCard();
       armTurnTimer(data.lobbyId, game);
-      scheduleAuto(data.lobbyId);
       io.to(data.lobbyId).emit('game:started', { gameState: publicGame(game), firstCard });
       io.to(data.lobbyId).emit('gameStarted', { gameState: publicGame(game), firstCard });
       game.players.forEach(player => {
@@ -933,7 +914,6 @@ io.on('connection', (socket) => {
     if (result.success) {
       const game = result.game;
       armTurnTimer(data.lobbyId, game);
-      scheduleAuto(data.lobbyId);
       const updateData = {
         gameState: publicGame(game),
         playedCard: result.playedCard,
@@ -968,7 +948,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Robar, pasar y elegir color comparten el mismo cierre: reloj, aviso a la mesa y jugada automática
+  // Robar, pasar y elegir color comparten el mismo cierre: reloj y aviso a la mesa
   const turnAction = (event, fn, action) => socket.on(event, (data) => {
     const result = fn(data);
     if (!result.success) return socket.emit('game:error', result.error);
@@ -978,7 +958,6 @@ io.on('connection', (socket) => {
       ...(result.cardsDrawn && { cardsDrawn: result.cardsDrawn }),
       ...(result.drawCards && { cardsDrawn: result.drawCards }),
     });
-    scheduleAuto(data.lobbyId);
   });
   turnAction('game:drawCard', (d) => lobbyManager.drawCardForPlayer(d.lobbyId, currentUserId), 'draw');
   turnAction('game:passTurn', (d) => lobbyManager.passTurn(d.lobbyId, currentUserId), 'pass');

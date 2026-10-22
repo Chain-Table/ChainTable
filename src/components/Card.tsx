@@ -50,7 +50,7 @@ export const Card: React.FC<CardProps> = ({
       "disabled:cursor-default",
       SIZES[size],
       isPlayable
-        ? "cursor-pointer hover:-translate-y-5 hover:scale-105 drop-shadow-[0_0_12px_rgba(250,204,21,0.55)] focus-visible:-translate-y-5 focus-visible:outline-none"
+        ? "cursor-pointer group-hover:-translate-y-5 group-hover:scale-105 drop-shadow-[0_0_12px_rgba(250,204,21,0.55)] focus-visible:-translate-y-5 focus-visible:outline-none"
         : "drop-shadow-[0_6px_8px_rgba(0,0,0,0.5)]",
       dimmed ? "brightness-50 saturate-50" : "",
       className,
