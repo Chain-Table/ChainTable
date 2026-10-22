@@ -394,6 +394,11 @@ const ERRORS_EN: Record<string, string> = {
   'Error de conexión': 'Connection error',
   'No se pudo cancelar el lobby': "Couldn't cancel the table",
   'Elegí un alias o conectá tu wallet': 'Pick an alias or connect your wallet',
+  'Error de la red, probá de nuevo en un momento': 'Network error, try again in a moment',
+  'Hay demasiadas mesas abiertas, probá en un rato': 'Too many open tables, try again later',
+  'Tipo de mesa inválido': 'Invalid table type',
+  'Ponele un nombre a la mesa': 'Give the table a name',
+  'La partida ya empezó': 'The game already started',
   // prefijos
   'No se pudo cancelar on-chain: ': "Couldn't cancel on-chain: ",
   'Red no soportada: ': 'Unsupported network: ',

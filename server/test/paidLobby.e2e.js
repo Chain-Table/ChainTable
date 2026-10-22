@@ -44,7 +44,7 @@ function bot(sock, me, lobbyId) {
     }
     else if (state.drawStackActive || !drew) { drew = !state.drawStackActive; sock.emit('game:drawCard', { lobbyId }); }
     else { drew = false; sock.emit('game:passTurn', { lobbyId }); }
-  }, 20);
+  }, 150); // ritmo humano: el server limita ~10 eventos/s por socket
   sock.on('game:yourHand', (h) => { hand = h; act(); });
   sock.on('game:started', (d) => { state = d.gameState; act(); });
   sock.on('game:update', (d) => { state = d.gameState; act(); });
@@ -168,6 +168,15 @@ function bot(sock, me, lobbyId) {
     assert.equal(await provider.getBalance(fees.address) - ethers.parseEther('10000'), ethers.parseEther('0.1'));
     assert.equal(await provider.getBalance(await table.getAddress()), 0n);
     console.log(`✓ ganó ${who}, cobró 1.9 ETH, fee 0.1 ETH, contrato vacío`);
+
+    // Partida terminada: deja de figurar y los jugadores pueden armar otra mesa
+    sa.emit('lobby:list');
+    const list = await once(sa, 'lobby:list-updated');
+    assert.ok(![...list.waitingForPlayers, ...list.inGame].some((l) => l.id === lobbyId), 'la mesa terminada no se lista');
+    sa.emit('lobby:create', { name: 'revancha', type: 'publico', creatorId: 'alice', creatorUsername: 'Alicia' });
+    const again = await once(sa, 'lobby:created');
+    assert.ok(again.success, again.error);
+    console.log('✓ mesa terminada liberada: no se lista y los jugadores pueden crear otra');
 
     [sa, sb, sm].forEach((s) => s.close());
     console.log('E2E OK');

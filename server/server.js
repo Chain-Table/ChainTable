@@ -14,6 +14,7 @@ const contractService = require('./contractService');
 const { STATE } = contractService;
 
 const app = express();
+app.disable('x-powered-by');
 const server = http.createServer(app);
 
 // Normalizar FRONTEND_ORIGIN. Acepta uno o varios origins separados por coma.
@@ -56,7 +57,7 @@ const io = socketIo(server, {
   },
   path: '/socket.io',
   transports: ['websocket', 'polling'],
-  allowEIO3: true // Compatibilidad con versiones anteriores
+  maxHttpBufferSize: 16 * 1024, // ningún evento del juego pesa más; frena payloads gigantes
 });
 
 // ===== MODELOS BÁSICOS =====
@@ -275,6 +276,7 @@ class LobbyManager {
   joinLobby(lobbyId, playerId, username, walletAddress, socketId, password, token) {
     const lobby = this.lobbies.get(lobbyId);
     if (!lobby) return { success: false, error: 'Lobby no encontrado' };
+    if (lobby.status !== 'waiting') return { success: false, error: 'La partida ya empezó' };
     if (lobby.players.length >= lobby.maxPlayers) return { success: false, error: 'Lobby lleno' };
     if (lobby.password && lobby.password !== password) return { success: false, error: 'Contraseña incorrecta' };
     if (this.playerLobbyMap.has(playerId)) return { success: false, error: 'Ya estás en otro lobby' };
@@ -295,6 +297,7 @@ class LobbyManager {
     this.playerLobbyMap.delete(playerId);
     if (lobby.players.length === 0) {
       this.lobbies.delete(lobbyId);
+      this.games.delete(lobbyId);
     } else {
       const hasHost = lobby.players.some(p => p.isHost);
       if (!hasHost && lobby.players.length > 0) {
@@ -654,6 +657,31 @@ function onTurnTimeout(lobbyId) {
   scheduleAuto(lobbyId);
 }
 
+// Errores de ethers/RPC pueden traer la URL del RPC (con su API key): al cliente le llega un mensaje genérico
+function clientError(e) {
+  if (!e?.code && !e?.shortMessage) return e.message;
+  console.error('Error on-chain:', e.shortMessage || e.message);
+  return 'Error de la red, probá de nuevo en un momento';
+}
+
+// Partida terminada: sale de la lista, los jugadores quedan libres para otra mesa y en 5 min se borra
+const FINISHED_TTL_MS = 5 * 60 * 1000;
+function finishLobby(lobbyId) {
+  const lobby = lobbyManager.lobbies.get(lobbyId);
+  if (!lobby) return;
+  lobby.status = 'finished';
+  lobby.players.forEach((p) => lobbyManager.playerLobbyMap.delete(p.id));
+  setTimeout(() => {
+    lobbyManager.lobbies.delete(lobbyId);
+    lobbyManager.games.delete(lobbyId);
+  }, FINISHED_TTL_MS).unref();
+  io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
+}
+
+const MAX_LOBBIES = Number(process.env.MAX_LOBBIES) || 200;
+const LOBBY_TYPES = ['publico', 'privado', 'pago'];
+const cleanText = (v, max) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max);
+
 const sameAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 
@@ -706,9 +734,20 @@ async function settlePaidLobby(lobbyId, lobby, game) {
 
 // Manejar conexiones WebSocket
 io.on('connection', (socket) => {
-  console.log(`👤 Usuario conectado: ${socket.id}`);
   let currentUserId = null;
   const token = socket.handshake.auth?.token;
+
+  // ~10 eventos/s por socket con ráfagas de 20: un jugador real no llega; un script de spam sí
+  let bucket = 20;
+  let last = Date.now();
+  socket.use((_packet, next) => {
+    const now = Date.now();
+    bucket = Math.min(20, bucket + ((now - last) / 1000) * 10);
+    last = now;
+    if (bucket < 1) return;
+    bucket--;
+    next();
+  });
 
   // Enviar lista de lobbies al conectar
   socket.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
@@ -716,12 +755,18 @@ io.on('connection', (socket) => {
 
   // Crear lobby
   socket.on('lobby:create', async (data) => {
-    console.log('🎮 Creando lobby:', data.name, data.type);
-    let username, walletAddress;
-    const lobbyData = { name: data.name, type: data.type, password: data.password };
+    let username, walletAddress, lobbyData;
 
     try {
       if (!validToken(token) || !ownsId(data.creatorId, token)) throw new Error('Sesión inválida, recargá la página');
+      if (lobbyManager.playerLobbyMap.has(data.creatorId) || (currentUserId && lobbyManager.playerLobbyMap.has(currentUserId))) {
+        throw new Error('Ya estás en otro lobby');
+      }
+      if (lobbyManager.lobbies.size >= MAX_LOBBIES) throw new Error('Hay demasiadas mesas abiertas, probá en un rato');
+      if (!LOBBY_TYPES.includes(data.type)) throw new Error('Tipo de mesa inválido');
+      const name = cleanText(data.name, 40);
+      if (!name) throw new Error('Ponele un nombre a la mesa');
+      lobbyData = { name, type: data.type, ...(data.type === 'privado' && { password: String(data.password ?? '').slice(0, 64) }) };
       ({ username, walletAddress } = identity(data.creatorUsername, data.walletAddress));
       // Mesa paga: la verdad es el contrato, no lo que manda el cliente
       if (data.type === 'pago') {
@@ -747,7 +792,7 @@ io.on('connection', (socket) => {
         });
       }
     } catch (e) {
-      const result = { success: false, error: e.message };
+      const result = { success: false, error: clientError(e) };
       socket.emit('lobby:created', result);
       socket.emit('lobbyCreated', result);
       return;
@@ -768,12 +813,12 @@ io.on('connection', (socket) => {
 
   // Unirse a lobby
   socket.on('lobby:join', async (data) => {
-    console.log('👋 Uniéndose a lobby:', data);
 
     let result, username, walletAddress;
     const target = lobbyManager.lobbies.get(data.lobbyId);
     try {
       if (!validToken(token) || !ownsId(data.playerId, token)) throw new Error('Sesión inválida, recargá la página');
+      if (currentUserId && currentUserId !== data.playerId && lobbyManager.playerLobbyMap.has(currentUserId)) throw new Error('Ya estás en otro lobby');
       ({ username, walletAddress } = identity(data.username, data.walletAddress));
       // Pagó si el contrato lo tiene como jugador; una wallet = un asiento
       if (target?.type === 'pago') {
@@ -790,7 +835,7 @@ io.on('connection', (socket) => {
         if (!paid) throw new Error('No encontramos tu pago on-chain para esta mesa');
       }
     } catch (e) {
-      result = { success: false, error: e.message };
+      result = { success: false, error: clientError(e) };
     }
     result = result || lobbyManager.joinLobby(
       data.lobbyId,
@@ -817,7 +862,6 @@ io.on('connection', (socket) => {
 
   // Salir de lobby
   socket.on('lobby:leave', (data) => {
-    console.log('🚪 Saliendo de lobby:', data);
     const result = currentUserId ? lobbyManager.leaveLobby(data.lobbyId, currentUserId) : { success: false, error: 'Sesión inválida' };
     socket.emit('lobby:left', result);
     socket.emit('lobbyLeft', result);
@@ -837,11 +881,10 @@ io.on('connection', (socket) => {
   });
 
   // Ready (placeholder)
-  socket.on('lobby:ready', (data) => { console.log('✅ Jugador listo:', data); });
+  socket.on('lobby:ready', () => {});
 
   // Start game
   socket.on('game:start', async (data) => {
-    console.log('🎮 Iniciando partida:', data);
     const lobby = lobbyManager.lobbies.get(data.lobbyId);
     if (lobby?.type === 'pago') {
       const host = lobby.players.find((p) => p.id === currentUserId);
@@ -861,7 +904,7 @@ io.on('connection', (socket) => {
         if (l.state !== STATE.STARTED) throw new Error('La mesa on-chain no se pudo empezar');
       } catch (e) {
         lobby.status = 'waiting';
-        return socket.emit('game:error', e.message);
+        return socket.emit('game:error', clientError(e));
       }
       lobby.status = 'waiting'; // startGame lo pasa a in_game
     }
@@ -886,7 +929,6 @@ io.on('connection', (socket) => {
 
   // Game actions
   socket.on('game:playCard', (data) => {
-    console.log('🃏 Jugando carta:', data);
     const result = lobbyManager.playCard(data.lobbyId, currentUserId, data.cardIndex);
     if (result.success) {
       const game = result.game;
@@ -919,6 +961,7 @@ io.on('connection', (socket) => {
         
         const lobby = lobbyManager.lobbies.get(data.lobbyId);
         if (lobby?.type === 'pago') settlePaidLobby(data.lobbyId, lobby, game);
+        finishLobby(data.lobbyId);
       }
     } else {
       socket.emit('game:error', result.error);
@@ -942,7 +985,6 @@ io.on('connection', (socket) => {
   turnAction('game:chooseColor', (d) => lobbyManager.chooseColor(d.lobbyId, currentUserId, d.color), 'color_chosen');
 
   socket.on('game:getLobbyInfo', (data) => {
-    console.log('📋 Solicitando info del lobby:', data);
     const lobby = lobbyManager.lobbies.get(data.lobbyId);
     if (lobby) {
       if (!currentUserId) {
@@ -963,19 +1005,15 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', (reason) => {
-    console.log('👤 Usuario desconectado:', socket.id, { reason, currentUserId });
     if (currentUserId && lobbyManager.playerLobbyMap.has(currentUserId)) {
       const lobbyId = lobbyManager.playerLobbyMap.get(currentUserId);
-      console.log(`⏳ Marcando usuario ${currentUserId} como desconectado en lobby ${lobbyId}`);
       lobbyManager.handleDisconnectGrace(lobbyId, currentUserId, () => {
         // Before expelling, ensure lobby still exists (it might have been cancelled)
         // En partida el asiento se guarda: puede volver cuando quiera
         if (lobbyManager.lobbies.get(lobbyId)?.status !== 'waiting') return;
         if (!lobbyManager.lobbies.has(lobbyId)) {
-          console.log(`⚠️ Lobby ${lobbyId} not present at expel time, skipping expel for ${currentUserId}`);
           return;
         }
-        console.log(`� Expulsando finalmente a ${currentUserId} del lobby ${lobbyId}`);
         const result = lobbyManager.leaveLobby(lobbyId, currentUserId);
         if (result.success) {
           io.to(lobbyId).emit('lobby:updated', { lobbyId });
@@ -989,7 +1027,6 @@ io.on('connection', (socket) => {
 
   // Cancel lobby explicitly by host before starting
   socket.on('lobby:cancel', async (data) => {
-    console.log('🛑 Lobby cancel requested:', data);
     const { lobbyId } = data;
     const playerId = currentUserId;
     const lobby = lobbyManager.lobbies.get(lobbyId);
@@ -1005,7 +1042,7 @@ io.on('connection', (socket) => {
         if (l.state === STATE.OPEN) await contractService.cancelLobby(chain, onchainId);
       } catch (e) {
         lobby.status = 'waiting';
-        socket.emit('game:error', 'No se pudo cancelar on-chain: ' + e.message);
+        socket.emit('game:error', 'No se pudo cancelar on-chain: ' + clientError(e));
         socket.emit('lobby:left', { success: false, lobbyId });
         return;
       }
@@ -1023,7 +1060,6 @@ io.on('connection', (socket) => {
         }
       });
       lobbyManager.lobbies.delete(lobbyId);
-      console.log(`Lobby ${lobbyId} cleaned up successfully`);
     } catch (e) {
       console.error('Error during cleanup:', e);
     }
@@ -1034,7 +1070,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('lobby:reconnect', ({ lobbyId, userId }) => {
-    console.log(`🔄 Usuario ${userId} reconectando a lobby ${lobbyId} con socket ${socket.id}`);
     const seat = lobbyManager.lobbies.get(lobbyId)?.players.find((p) => p.id === userId);
     if (!seat || !validToken(token) || seat.token !== token) {
       return socket.emit('game:lobbyInfo', { success: false, error: 'Ya no estás en esta mesa' });
