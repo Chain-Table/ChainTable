@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import type { LobbyType, CreateLobbyFormData, Lobby } from '../types/lobby';
 import type { GameState, Card, GameUpdateData, WildColor } from '../types/game';
+import { getSessionToken } from '../utils/userSession';
 
 export interface SocketEvents {
   // Reconexión de lobby
@@ -56,8 +57,7 @@ export interface SocketEvents {
   'game:error': (message: string) => void;
   'game:lobbyInfo': (data: { success: boolean; lobby?: any; error?: string }) => void;
   'game:gameInfo': (data: { success: boolean; game?: GameState; error?: string }) => void;
-  'game:distributePrizes': (data: { lobbyId: string; winners: string[]; mode: string }) => void;
-  'game:prizesDistributed': (data: { success: boolean; txHash: string; message: string }) => void;
+  'game:prizesDistributed': (data: { success: boolean; txHash: string; explorerUrl: string; winners: string[] }) => void;
   'game:prizeError': (data: { error: string }) => void;
 
   // Eventos de conexión
@@ -100,8 +100,8 @@ class SocketService {
         transports: ['websocket', 'polling'],
         autoConnect: true,
         reconnection: true,
-        reconnectionAttempts: 5,
         reconnectionDelay: 1000,
+        auth: { token: getSessionToken() },
       });
 
       this.socket.on('connect', () => {
@@ -253,12 +253,6 @@ class SocketService {
     await this.ensureConnected();
     console.debug('socketService.reconnectToLobby ->', { lobbyId, userId });
     this.emit('lobby:reconnect', { lobbyId, userId });
-  }
-
-  async notifyPrizeDistributed(data: { txHash: string; lobbyId: string; explorerUrl?: string }): Promise<void> {
-    await this.ensureConnected();
-    console.debug('socketService.notifyPrizeDistributed ->', data);
-    this.emit('game:prizeDistributed', data);
   }
 
   // Métodos para escuchar eventos

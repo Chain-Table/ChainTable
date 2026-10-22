@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { socketService } from '../services/socketService';
-import { getUserSession } from '../utils/userSession';
 
 interface SocketContextType {
   isConnected: boolean;
@@ -48,12 +47,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     setIsConnected(false);
   };
 
-  // Conectar automáticamente si hay sesión (solo una vez al montar)
+  // Conectar al montar: la lista de lobbies es pública y la sesión puede crearse después (Auth)
   useEffect(() => {
-    const session = getUserSession();
-    if (session) {
-      connect();
-    }
+    connect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Solo ejecutar al montar el componente
 

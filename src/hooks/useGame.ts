@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ethers } from 'ethers';
 import type { GameState, Card, GameUpdateData, Winner, WildColor, GameLogEntry } from '../types/game';
 import { socketService } from '../services/socketService';
 import { getUserSession } from '../utils/userSession';
 import { useSocket } from './useSocket';
+import { leavePaidLobby } from '../utils/chainTable';
+import type { NetworkKey } from '../config/chains';
+import i18n, { tErr } from '../i18n';
+import { displayName } from '../utils/gameUtils';
 
 interface UseGameReturn {
   // Estado
@@ -21,10 +24,6 @@ interface UseGameReturn {
   drawCard: () => void;
   passTurn: () => void;
   chooseWildColor: (color: WildColor) => void;
-  cancelLobbyOnChain: () => Promise<void>;
-  
-  // Premios (NEW in V2)
-  autoDistributePrizes: (winnerAddresses: string[]) => Promise<any>;
   
   // Estados UI
   isLoading: boolean;
@@ -54,9 +53,7 @@ export function useGame(lobbyId: string): UseGameReturn {
 
   // Obtener sesión actual
   const session = getUserSession();
-  
-  // Ref para mantener la última versión de autoDistributePrizes sin causar re-renders
-  const autoDistributePrizesRef = useRef<((winnerAddresses: string[]) => Promise<any>) | null>(null);
+
   const mySessionId = session?.id || '';
   const mySocketId = socketService.socket_instance?.id || '';
 
@@ -131,8 +128,8 @@ export function useGame(lobbyId: string): UseGameReturn {
             gameState
           };
         }
-      } catch (e) {}
-    } catch (e) {}
+      } catch { /* ignore */ }
+    } catch { /* ignore */ }
   }, [gameState, mySessionId, isMyTurn, lobbyId]);
 
   // Mostrar mensaje temporal
@@ -152,184 +149,6 @@ export function useGame(lobbyId: string): UseGameReturn {
     ].slice(0, 40));
   }, []);
 
-  /**
-   * Auto-distribución de premios (NEW in V2)
-   * Cualquier jugador puede llamar esta función cuando se muestra el podio
-   * No depende del evento del servidor
-   */
-  const autoDistributePrizes = useCallback(async (winnerAddresses: string[]) => {
-    console.log('🎁 [AUTO-DISTRIBUTE] Iniciando auto-distribución de premios');
-    console.log('   📌 Winners:', winnerAddresses);
-    console.log('   📌 Game State:', gameState);
-    console.log('🔍 DEBUG - gameState completo:', JSON.stringify(gameState, null, 2));
-    console.log('🔍 DEBUG - gameState.onchain:', (gameState as any).onchain);
-    console.log('🔍 DEBUG - gameState.onchainLobbyId:', (gameState as any).onchainLobbyId);
-    
-    try {
-      // Verificar si es un lobby de pago
-      if (!gameState || (gameState as any).type !== 'pago') {
-        console.log('ℹ️ Lobby gratuito, no hay premios on-chain');
-        return;
-      }
-
-      const onchainLobbyId = (gameState as any).onchainLobbyId || (gameState as any).onchain?.lobbyId;
-      if (!onchainLobbyId) {
-        console.error('❌ No se encontró onchainLobbyId');
-        showGameMessage('❌ No se puede distribuir: Lobby ID no disponible', 3000);
-        return;
-      }
-
-      // Obtener la dirección del contrato desde el gameState
-      let contractAddress = (gameState as any).onchain?.contract;
-      const chain = (gameState as any).onchain?.chain;
-      
-      console.log('🔍 DEBUG - contractAddress extraído:', contractAddress);
-      console.log('🔍 DEBUG - chain extraído:', chain);
-      
-      // Fallback: Si no hay contract address pero hay chain, usar direcciones configuradas
-      if (!contractAddress && chain) {
-    const CONTRACT_ADDRESSES: Record<string, string> = {
-      'sepolia': '0x440462F79Ac531fB6F3618925766dEA09AFC0E02', // V2 Fixed
-      'ronin-saigon': '0x3f412d0279c59E3FF7ff971095fBabA1C3a7C2C2', // V2 Fixed
-      'ronin': '0x6Fa5163DFe0e5847CE27b0574A9A7885f4bAD25c', // V2 Fixed ✅
-    };
-        contractAddress = CONTRACT_ADDRESSES[chain];
-        console.log('⚠️ Using fallback contract address for', chain, ':', contractAddress);
-      }
-      
-      if (!contractAddress) {
-        console.error('❌ No se encontró dirección del contrato');
-        console.error('🔍 DEBUG - gameState keys:', Object.keys(gameState || {}));
-        showGameMessage('❌ No se puede distribuir: Contrato no disponible', 3000);
-        return;
-      }
-
-      console.log('   📌 On-chain Lobby ID:', onchainLobbyId);
-      console.log('   📌 Contract Address:', contractAddress);
-      console.log('   📌 Chain:', chain);
-
-      // Importar dinámicamente ethers
-      const { ethers } = await import('ethers');
-      
-      if (!window.ethereum) {
-        console.error('❌ MetaMask no disponible');
-        showGameMessage('❌ MetaMask no detectado', 3000);
-        return;
-      }
-
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const userAddress = await signer.getAddress();
-      
-      console.log('✅ User address:', userAddress);
-      
-      // ABI actualizado para V2
-      const contractABI = [
-        'function endLobby(uint256 lobbyId, address[] calldata winners) external',
-        'function isPlayerInLobby(uint256 lobbyId, address player) external view returns (bool)'
-      ];
-      
-      const contract = new ethers.Contract(contractAddress, contractABI, signer);
-      
-      console.log('📝 Contrato V2:', contractAddress);
-      
-      // Verificar que el usuario sea un jugador del lobby (V2 feature)
-      let isPlayer = false;
-      try {
-        isPlayer = await contract.isPlayerInLobby(onchainLobbyId, userAddress);
-        console.log('   🎮 Is player in lobby:', isPlayer);
-      } catch (checkError: any) {
-        console.warn('⚠️ No se pudo verificar si es jugador (puede ser versión V1 del contrato):', checkError.message);
-        // Continuar de todas formas - en V1 no existe esta función
-        isPlayer = true;
-      }
-      
-      if (!isPlayer) {
-        console.log('⚠️ Usuario no es jugador del lobby, no puede distribuir premios');
-        showGameMessage('⚠️ Solo los jugadores pueden distribuir premios', 3000);
-        return;
-      }
-      
-      console.log('🔑 Llamando endLobby con:');
-      console.log('   - lobbyId:', onchainLobbyId);
-      console.log('   - winners:', winnerAddresses);
-      
-      showGameMessage('🔄 Distribuyendo premios on-chain...', 0);
-      
-      // Llamar a endLobby
-      console.log('⏳ Enviando transacción endLobby...');
-      const tx = await contract.endLobby(onchainLobbyId, winnerAddresses);
-      console.log('✅ Transacción enviada:', tx.hash);
-      
-      showGameMessage('⏳ Esperando confirmación... Esto puede tomar unos segundos', 0);
-      const receipt = await tx.wait();
-      
-      console.log('✅ Premios distribuidos! TX Hash:', tx.hash);
-      console.log('📋 Receipt:', receipt);
-      
-      // Obtener la URL del explorador según la chain
-      const explorerUrls: Record<string, string> = {
-        'sepolia': 'https://sepolia.etherscan.io/tx/',
-        'ronin': 'https://app.roninchain.com/tx/',
-        'ronin-saigon': 'https://saigon-app.roninchain.com/tx/'
-      };
-      
-      const explorerUrl = gameState.onchain?.chain ? explorerUrls[gameState.onchain.chain] || '' : '';
-      const txLink = explorerUrl + tx.hash;
-      
-      console.log('🔗 Explorer URL generada:', txLink);
-      
-      // Guardar TX info en el estado
-      const txData = {
-        hash: tx.hash,
-        explorerUrl: txLink
-      };
-      
-      console.log('💾 Guardando TX data en estado:', txData);
-      setPrizeDistributionTx(txData);
-      
-      console.log('✅ Estado prizeDistributionTx actualizado');
-      
-      // Mostrar mensaje con link al explorador
-      showGameMessage(
-        `✅ ¡Premios distribuidos exitosamente!\n\n🔗 Ver transacción:\n${tx.hash.slice(0, 20)}...`, 
-        15000
-      );
-      
-      console.log(`🔗 Ver en explorador: ${txLink}`);
-      
-      // Notificar al servidor con el TX hash correcto
-      socketService.notifyPrizeDistributed({
-        txHash: tx.hash,
-        lobbyId,
-        explorerUrl: txLink
-      });
-      
-      return { tx, receipt, txHash: tx.hash, explorerUrl: txLink };
-      
-    } catch (error: any) {
-      console.error('❌ Error en auto-distribución:', error);
-      
-      // Mensajes de error más específicos
-      let errorMsg = 'Error desconocido';
-      if (error.code === 'ACTION_REJECTED') {
-        errorMsg = 'Transacción rechazada por el usuario';
-      } else if (error.reason) {
-        errorMsg = error.reason;
-      } else if (error.message) {
-        errorMsg = error.message;
-      }
-      
-      showGameMessage(`❌ Error: ${errorMsg}`, 8000);
-      throw error;
-    }
-  }, [gameState, lobbyId, showGameMessage]);
-  
-  // Mantener la ref actualizada con la última versión de autoDistributePrizes
-  useEffect(() => {
-    autoDistributePrizesRef.current = autoDistributePrizes;
-  }, [autoDistributePrizes]);
-
   // Inicializar listeners de Socket.IO
   useEffect(() => {
     // Solo añadir listeners, la conexión se maneja globalmente
@@ -343,20 +162,34 @@ export function useGame(lobbyId: string): UseGameReturn {
     };
 
     // Listener para información del lobby
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleLobbyInfo = (data: { success: boolean; lobby?: any; error?: string }) => {
       setIsLoading(false);
       if (data.success && data.lobby) {
         console.log('📋 Información del lobby recibida:', data.lobby);
-        setGameState(data.lobby);
+        // Durante la partida el lobby solo aporta metadata: no pisar mazo/manos/turno
+        setGameState((prev) =>
+          prev?.discardPile?.length && data.lobby.status !== 'waiting'
+            ? {
+                ...prev,
+                ...data.lobby,
+                status: prev.status,
+                players: prev.players.map((p) => ({
+                  ...p,
+                  isConnected: data.lobby.players.find((lp: { id: string }) => lp.id === p.id)?.isConnected ?? false,
+                })),
+              }
+            : data.lobby
+        );
         if (data.lobby.status === 'waiting') {
           setActionLog([]);
         }
         setError(null);
       } else {
         console.error('❌ Error obteniendo lobby:', data.error);
-        setError(data.error || 'Lobby no encontrado');
+        setError(tErr(data.error || 'Lobby no encontrado'));
         // Si el lobby no existe en el servidor, limpiamos y volvemos a la lista
-        try { localStorage.removeItem('activeLobbyId'); } catch (e) {}
+        try { localStorage.removeItem('activeLobbyId'); } catch { /* ignore */ }
         // Pequeño delay para dejar que la UI muestre el error antes de navegar
         setTimeout(() => {
           navigate('/lobbies');
@@ -368,24 +201,26 @@ export function useGame(lobbyId: string): UseGameReturn {
     const handleGameInfo = (data: { success: boolean; game?: GameState; error?: string }) => {
       if (data.success && data.game) {
         console.log('🎮 Información del juego recibida:', data.game);
-        setGameState(data.game);
+        setGameState((prev) => ({ ...prev, ...data.game! }));
         setIsLoading(false);
       }
     };
 
     // Game started
     const handleGameStarted = ({ gameState: newGameState }: { gameState: GameState; firstCard: Card }) => {
-      setGameState(newGameState);
+      setGameState((prev) => ({ ...prev, ...newGameState }));
       setActionLog([]);
       addActionLogEntry({ action: 'started' });
-      showGameMessage(`¡La partida ha comenzado!`);
+      showGameMessage(i18n.t('msg_started'));
       setError(null);
       setIsLoading(false);
     };
 
     // Game update
     const handleGameUpdate = (data: GameUpdateData) => {
-      setGameState(data.gameState);
+      setGameState((prev) => ({ ...prev, ...data.gameState }));
+      // Si el server eligió el color por mí (tiempo agotado), cerrar el selector
+      if (!data.gameState.awaitingColor) setShowColorPicker(false);
       setIsLoading(false);
       addActionLogEntry({
         action: data.action,
@@ -394,46 +229,52 @@ export function useGame(lobbyId: string): UseGameReturn {
         cardsDrawn: data.cardsDrawn,
       });
       
+      // Jugadas que hizo el server por mí
+      if (data.auto && data.playerPlayed === session?.username && ['draw', 'pass'].includes(data.action)) {
+        showGameMessage(i18n.t(data.auto === 'timeout' ? 'msg_timeout' : data.action === 'draw' ? 'msg_auto_draw' : 'msg_auto_pass'));
+        return;
+      }
+
       // Mostrar mensajes según la acción
       switch (data.action) {
         case 'draw':
           if (data.playerPlayed !== session?.username) {
-            showGameMessage(`${data.playerPlayed} robó una carta`);
+            showGameMessage(i18n.t('msg_drew', { name: displayName(data.playerPlayed) }));
           }
           break;
         case 'skip':
-          showGameMessage(`¡${data.playerPlayed} jugó SKIP!`);
+          showGameMessage(i18n.t('msg_skip', { name: displayName(data.playerPlayed) }));
           break;
         case 'reverse':
-          showGameMessage(`¡${data.playerPlayed} jugó REVERSE!`);
+          showGameMessage(i18n.t('msg_reverse', { name: displayName(data.playerPlayed) }));
           break;
         case 'drawTwo_played':
-          showGameMessage(`+2 en juego...`);
+          showGameMessage(i18n.t('msg_plus2'));
           break;
         case 'drawFour_played':
-          showGameMessage(`+4 en juego...`);
+          showGameMessage(i18n.t('msg_plus4'));
           break;
         case 'stack_allowed':
           // Indica al penalizado que puede responder (apilar) si tiene la carta
           if (data.currentPlayerName === session?.username) {
-            showGameMessage('Tienes un stack sobre ti. Puedes apilar +2/+4 si tienes la carta.');
+            showGameMessage(i18n.t('msg_stack_you', { n: data.playedCard?.value === 'WildDrawFour' ? 4 : 2 }));
           } else {
-            showGameMessage(`${data.playerPlayed} puede ser apilado`);
+            showGameMessage(i18n.t('msg_stack_other', { name: displayName(data.currentPlayerName || '') }));
           }
           break;
         case 'stack_not_allowed':
           // Indica que no hay defensa posible; el jugador debería robar/pasar
           if (data.currentPlayerName === session?.username) {
-            showGameMessage('No puedes defenderte. Debes robar las cartas acumuladas y se te saltará el turno.');
+            showGameMessage(i18n.t('msg_no_defense_you'));
           } else {
-            showGameMessage(`${data.playerPlayed} no puede defenderse y deberá robar`);
+            showGameMessage(i18n.t('msg_no_defense_other', { name: displayName(data.currentPlayerName || '') }));
           }
           break;
         case 'draw_penalty':
-          showGameMessage(`${data.playerPlayed} recibió ${data.cardsDrawn} cartas de penalidad`);
+          showGameMessage(i18n.t('msg_penalty', { name: displayName(data.playerPlayed), count: data.cardsDrawn }));
           break;
         case 'color_chosen':
-          showGameMessage(`${data.playerPlayed} eligió color`);
+          showGameMessage(i18n.t('msg_color', { name: displayName(data.playerPlayed) }));
           break;
       }
     };
@@ -453,54 +294,40 @@ export function useGame(lobbyId: string): UseGameReturn {
     // Winner found
     const handleWinner = ({ username, rank }: { username: string; rank: number; gameState: GameState }) => {
       addActionLogEntry({ action: 'winner', playerName: username });
-      showGameMessage(`🏆 ${username} salió en ${rank}° lugar!`, 4000);
+      showGameMessage(i18n.t('msg_place', { name: displayName(username), rank }), 4000);
     };
 
     // Game over
     const handleGameOver = ({ gameState: finalState }: { gameState: GameState }) => {
-      setGameState(finalState);
+      setGameState((prev) => ({ ...prev, ...finalState }));
       addActionLogEntry({ action: 'over' });
-      showGameMessage('¡Partida terminada!', 5000);
+      showGameMessage(i18n.t('msg_over'), 5000);
       setIsLoading(false);
     };
 
-    // Distribución de premios desde evento del servidor
-    const handleDistributePrizes = async (data: { lobbyId: string; winners: string[]; mode: string }) => {
-      console.log('💰 [FRONTEND] Evento game:distributePrizes recibido:', data);
-      console.log('   📌 Lobby ID:', data.lobbyId);
-      console.log('   📌 Winners:', data.winners);
-      console.log('   📌 Mode:', data.mode);
-      
-      // Usar la ref para obtener la versión más reciente de autoDistributePrizes
-      if (autoDistributePrizesRef.current) {
-        await autoDistributePrizesRef.current(data.winners);
-      } else {
-        console.warn('⚠️ autoDistributePrizes no está disponible todavía');
-      }
-    };
-
-    const handlePrizesDistributed = (data: { success: boolean; txHash: string; message: string }) => {
-      console.log('✅ Premios distribuidos confirmados:', data);
-      showGameMessage(`✅ ${data.message}`, 5000);
+    // El servidor (referee) paga on-chain y nos manda el tx
+    const handlePrizesDistributed = (data: { txHash: string; explorerUrl: string }) => {
+      setPrizeDistributionTx({ hash: data.txHash, explorerUrl: data.explorerUrl });
+      showGameMessage(i18n.t('msg_prizes_paid'), 8000);
     };
 
     const handlePrizeError = (data: { error: string }) => {
       console.error('❌ Error en distribución:', data.error);
-      showGameMessage(`❌ ${data.error}`, 5000);
+      showGameMessage(`❌ ${tErr(data.error)}`, 5000);
     };
 
     // Game error
     const handleGameError = (message: string) => {
-      setError(message);
-      showGameMessage(`❌ ${message}`);
+      setError(tErr(message));
+      showGameMessage(`❌ ${tErr(message)}`);
       setIsLoading(false);
     };
 
     // Lobby cancelled (host closed before starting)
     const handleLobbyCancelled = (data: { lobbyId: string }) => {
       if (data.lobbyId === lobbyId) {
-        showGameMessage('El lobby fue cerrado por el creador', 3000);
-        try { localStorage.removeItem('activeLobbyId'); } catch (e) {}
+        showGameMessage(i18n.t('msg_lobby_closed'), 3000);
+        try { localStorage.removeItem('activeLobbyId'); } catch { /* ignore */ }
         navigate('/lobbies');
       }
     };
@@ -516,7 +343,6 @@ export function useGame(lobbyId: string): UseGameReturn {
     socketService.on('game:over', handleGameOver);
     socketService.on('game:error', handleGameError);
     socketService.on('lobby:cancelled', handleLobbyCancelled);
-    socketService.on('game:distributePrizes', handleDistributePrizes);
     socketService.on('game:prizesDistributed', handlePrizesDistributed);
     socketService.on('game:prizeError', handlePrizeError);
     // Nuevo: listener para lobby:updated
@@ -545,11 +371,10 @@ export function useGame(lobbyId: string): UseGameReturn {
       socketService.off('game:error', handleGameError);
       socketService.off('lobby:cancelled', handleLobbyCancelled);
       socketService.off('lobby:updated', handleLobbyUpdated);
-      socketService.off('game:distributePrizes', handleDistributePrizes);
       socketService.off('game:prizesDistributed', handlePrizesDistributed);
       socketService.off('game:prizeError', handlePrizeError);
     };
-    // NOTE: showGameMessage and autoDistributePrizes are intentionally NOT in dependencies
+    // NOTE: showGameMessage is intentionally NOT in dependencies
     // because they are stable callbacks that don't change, and including them would cause
     // re-registering listeners on every render which causes performance issues and flickering
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -600,78 +425,16 @@ export function useGame(lobbyId: string): UseGameReturn {
     setPendingWildCardIndex(null);
   }, [lobbyId, pendingWildCardIndex]);
 
-  const cancelLobbyOnChain = useCallback(async () => {
-    if (!gameState?.onchain || !gameState.onchain.lobbyId) {
-      throw new Error('No hay información on-chain del lobby');
-    }
-
-    const onchainLobbyId = gameState.onchain.lobbyId;
-    const chain = gameState.onchain.chain || 'ronin-saigon';
-    
-    const CONTRACT_ADDRESSES: Record<string, string> = {
-      'sepolia': '0x440462F79Ac531fB6F3618925766dEA09AFC0E02',
-      'ronin-saigon': '0x3f412d0279c59E3FF7ff971095fBabA1C3a7C2C2',
-      'ronin': '0x6Fa5163DFe0e5847CE27b0574A9A7885f4bAD25c',
-    };
-
-    const contractAddress = CONTRACT_ADDRESSES[chain];
-    if (!contractAddress) {
-      throw new Error(`No hay dirección de contrato para la red ${chain}`);
-    }
-
-    const UNO_ABI = [
-      "function cancelLobby(uint256 lobbyId)",
-      "event LobbyCancelled(uint256 indexed lobbyId, address indexed canceller, uint256 refundedCount)",
-      "event Payout(uint256 indexed lobbyId, address indexed player, uint256 amount)",
-    ];
-
-    showGameMessage('Cancelando lobby y procesando refunds...', 5000);
-    
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-    const contract = new ethers.Contract(contractAddress, UNO_ABI, signer);
-
-    console.log('🔴 Cancelando lobby on-chain:', {
-      lobbyId: onchainLobbyId,
-      chain,
-      contract: contractAddress,
-    });
-
-    const tx = await contract.cancelLobby(onchainLobbyId);
-    console.log('📤 Transacción de cancelación enviada:', tx.hash);
-
-    showGameMessage('Esperando confirmación de cancelación...', 0);
-    const receipt = await tx.wait();
-    
-    console.log('✅ Lobby cancelado on-chain:', receipt);
-
-    // Buscar eventos de refund en los logs
-    const payoutEvents = receipt.logs.filter((log: any) => {
-      try {
-        const parsed = contract.interface.parseLog(log);
-        return parsed?.name === "Payout";
-      } catch {
-        return false;
-      }
-    });
-
-    const refundCount = payoutEvents.length;
-    
-    showGameMessage(
-      `✅ Lobby cancelado exitosamente. ${refundCount} jugador(es) reembolsado(s).`,
-      5000
-    );
-
-    // Esperar 2 segundos y navegar a lobbies
-    setTimeout(() => {
-      navigate('/lobbies');
-    }, 2000);
-  }, [gameState, showGameMessage, navigate]);
-
   const leaveGame = useCallback(() => {
     // Intentar salir del lobby en el servidor y limpiar estado local
     (async () => {
       try {
+        // Mesa paga sin empezar: recuperar la entrada on-chain antes de irse
+        const onchain = gameState?.type === 'pago' ? gameState.onchain : undefined;
+        if (onchain?.chain && onchain.lobbyId && !isGameStarted && session?.walletAddress) {
+          showGameMessage(i18n.t('msg_recovering'), 0);
+          await leavePaidLobby(onchain.chain as NetworkKey, String(onchain.lobbyId), session.walletAddress as `0x${string}`);
+        }
         if (lobbyId) {
           await leaveLobby(lobbyId);
         }
@@ -679,11 +442,11 @@ export function useGame(lobbyId: string): UseGameReturn {
         console.warn('leaveLobby fallo o no estaba conectado:', err);
       } finally {
         // Limpiar la referencia de lobby activo en localStorage
-        try { localStorage.removeItem('activeLobbyId'); } catch (e) {}
+        try { localStorage.removeItem('activeLobbyId'); } catch { /* ignore */ }
         navigate('/lobbies');
       }
     })();
-  }, [navigate, leaveLobby, lobbyId]);
+  }, [navigate, leaveLobby, lobbyId, gameState, isGameStarted, session?.walletAddress, showGameMessage]);
 
   // Intentar salir correctamente si el hook se desmonta (por ejemplo, navegación abrupta)
   useEffect(() => {
@@ -691,7 +454,7 @@ export function useGame(lobbyId: string): UseGameReturn {
     // a component unmount during navigation triggers a leave immediately after
     // creating a lobby. Use explicit leaveGame() instead.
     return () => {
-      try { localStorage.removeItem('activeLobbyId'); } catch (e) {}
+      try { localStorage.removeItem('activeLobbyId'); } catch { /* ignore */ }
     };
   }, [lobbyId]);
 
@@ -710,10 +473,6 @@ export function useGame(lobbyId: string): UseGameReturn {
     drawCard,
     passTurn,
     chooseWildColor,
-    cancelLobbyOnChain,
-    
-    // Premios (NEW in V2)
-    autoDistributePrizes,
     
     // Estados UI
     isLoading,

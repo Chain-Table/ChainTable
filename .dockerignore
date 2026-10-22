@@ -1,0 +1,6 @@
+# El build solo copia server/: que no entren node_modules del host, secretos ni tests
+**/node_modules
+**/.env
+**/.env.*
+server/test
+.git

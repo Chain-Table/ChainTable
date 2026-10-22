@@ -1,9 +1,16 @@
 [profile.default]
-src = "src"
+src = "contracts"
 out = "out"
 libs = ["lib"]
+# paris: sin PUSH0/MCOPY, funciona igual en Ethereum, Base, Robinhood y Ronin
+evm_version = "paris"
 remappings = [
     "@openzeppelin/=lib/openzeppelin-contracts/",
 ]
 
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+[rpc_endpoints]
+sepolia = "${RPC_URL_SEPOLIA}"
+mainnet = "${RPC_URL_ETHEREUM}"
+base = "${RPC_URL_BASE}"
+robinhood = "${RPC_URL_ROBINHOOD}"
+ronin = "${RPC_URL_RONIN}"

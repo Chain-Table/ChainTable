@@ -2,128 +2,76 @@ import React from "react";
 import type { Card as CardType } from "../types/game";
 import { getCardImageSrc } from "../utils/gameUtils";
 
+// Proporción real de las imágenes de cartas (363x532)
+const SIZES = {
+  xs: "w-8",
+  sm: "w-12",
+  md: "w-16",
+  hand: "w-[clamp(72px,11vw,120px)]",
+  pile: "w-[clamp(84px,11vw,132px)]",
+} as const;
+
 interface CardProps {
   card: CardType;
   onClick?: () => void;
-  onDoubleClick?: () => void;
-  isSelected?: boolean;
+  /** Se puede jugar ahora: se levanta al pasar el mouse y brilla. */
   isPlayable?: boolean;
-  size?: "sm" | "md" | "lg" | "xl" | "2xl";
-  showTooltip?: boolean;
+  /** Atenuada (no se puede jugar en tu turno). */
+  dimmed?: boolean;
+  size?: keyof typeof SIZES;
   className?: string;
+  style?: React.CSSProperties;
+}
+
+function cardTitle(card: CardType): string {
+  if (card.value === "WildDrawFour") return "Comodín +4";
+  if (card.value === "Wild") return "Comodín";
+  const names: Record<string, string> = { Skip: "Saltar", Reverse: "Reversa", DrawTwo: "+2" };
+  return `${names[card.value] ?? card.value} ${card.color}`;
 }
 
 export const Card: React.FC<CardProps> = ({
   card,
   onClick,
-  onDoubleClick,
-  isSelected = false,
-  isPlayable = true,
+  isPlayable = false,
+  dimmed = false,
   size = "md",
-  showTooltip = false,
   className = "",
-}) => {
-  const imageSrc = getCardImageSrc(card);
+  style,
+}) => (
+  <button
+    type="button"
+    onClick={isPlayable ? onClick : undefined}
+    disabled={!isPlayable}
+    title={cardTitle(card)}
+    style={style}
+    className={[
+      "relative aspect-[363/532] shrink-0 rounded-[10%] transition-all duration-200 select-none",
+      "disabled:cursor-default",
+      SIZES[size],
+      isPlayable
+        ? "cursor-pointer hover:-translate-y-5 hover:scale-105 drop-shadow-[0_0_12px_rgba(250,204,21,0.55)] focus-visible:-translate-y-5 focus-visible:outline-none"
+        : "drop-shadow-[0_6px_8px_rgba(0,0,0,0.5)]",
+      dimmed ? "brightness-50 saturate-50" : "",
+      className,
+    ].join(" ")}
+  >
+    <img src={getCardImageSrc(card)} alt={cardTitle(card)} className="w-full h-full object-contain" draggable={false} />
+  </button>
+);
 
-  const sizeClasses = {
-    sm: "w-12 h-16",
-    md: "w-16 h-24",
-    lg: "w-20 h-30",
-    xl: "w-30 h-40",
-    "2xl": "w-36 h-52",
-  };
-
-  const cardClasses = [
-    "relative rounded-xl overflow-hidden shadow-lg transition-all duration-300 cursor-pointer border-2",
-    sizeClasses[size],
-    isSelected
-      ? "ring-4 ring-blue-400 ring-opacity-75 transform -translate-y-3 scale-110 border-blue-400 shadow-2xl shadow-blue-400/50"
-      : "border-transparent",
-    isPlayable
-      ? "hover:scale-110 hover:shadow-2xl hover:shadow-blue-500/30 hover:-translate-y-2"
-      : "opacity-50 cursor-not-allowed",
-    className,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  const handleClick = () => {
-    console.debug("Card.handleClick called", { card, isPlayable });
-    if (isPlayable && onClick) {
-      onClick();
-    }
-  };
-
-  const handleDoubleClick = () => {
-    if (isPlayable && onDoubleClick) {
-      onDoubleClick();
-    }
-  };
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    try {
-      // Log the event target classes to detect overlays or disabled state
-      const target = e.currentTarget as HTMLElement;
-      console.debug("Card.pointerDown", {
-        card,
-        isPlayable,
-        classList: target.className,
-      });
-    } catch (err) {
-      console.debug("Card.pointerDown error", err);
-    }
-  };
-
-  const getCardTitle = () => {
-    if (card.type === "Wild") {
-      return `Comodín ${card.value === "WildDrawFour" ? "+4" : ""}`;
-    }
-
-    let title = `${card.color} `;
-
-    switch (card.value) {
-      case "Skip":
-        title += "Saltar";
-        break;
-      case "Reverse":
-        title += "Reversa";
-        break;
-      case "DrawTwo":
-        title += "+2";
-        break;
-      default:
-        title += card.value;
-    }
-
-    return title;
-  };
-
-  return (
-    <div
-      className={cardClasses}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-      onPointerDown={handlePointerDown}
-      title={showTooltip ? getCardTitle() : undefined}
-    >
-      <img
-        src={imageSrc}
-        alt={getCardTitle()}
-        className="w-full h-full object-cover"
-        draggable={false}
-      />
-
-      {/* Indicador de carta jugable */}
-      {isPlayable && (
-        <div className="absolute top-1 right-1 w-2 h-2 bg-green-400 rounded-full opacity-70" />
-      )}
-
-      {/* Overlay para cartas no jugables */}
-      {!isPlayable && (
-        <div className="absolute inset-0 bg-gray-900 opacity-30" />
-      )}
-    </div>
-  );
-};
+/** Dorso de carta (mazo y manos de los rivales). */
+export const CardBack: React.FC<{ size?: keyof typeof SIZES; className?: string; style?: React.CSSProperties }> = ({
+  size = "md",
+  className = "",
+  style,
+}) => (
+  <div
+    style={style}
+    className={`aspect-[363/532] shrink-0 rounded-[10%] overflow-hidden bg-black ring-1 ring-white/30 shadow-[0_4px_8px_rgba(0,0,0,0.5)] ${SIZES[size]} ${className}`}
+  >
+    <img src="/cartamazo.png" alt="" className="w-full h-full object-cover" draggable={false} />
+  </div>
+);
 
 export default Card;

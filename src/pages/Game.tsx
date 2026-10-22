@@ -1,45 +1,55 @@
-import React, { useEffect } from "react";
-import { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useGame } from "../hooks/useGame";
 import { useSocket } from "../hooks/useSocket";
 import { getUserSession } from "../utils/userSession";
-import Card from "../components/Card";
-import PlayerHand from "../components/PlayerHand";
+import { displayName, isValidPlay } from "../utils/gameUtils";
 import ColorPicker from "../components/ColorPicker";
-import { useTranslation } from 'react-i18next'
-import type { Card as CardType, GameLogEntry } from "../types/game";
+import { Avatar, CenterPiles, Hand, OpponentSeat, TurnClock } from "../components/Table";
+import type { Card as CardType, GameLogEntry, GameState } from "../types/game";
+import { NETWORKS, fmtAmount, type NetworkKey } from "../config/chains";
+import { tErr } from "../i18n";
+
+const PAGE_BG = "min-h-[100dvh] page-bg text-white";
+
+/** Premios por puesto (en wei) según las reglas del contrato. */
+function prizesFor(gs: GameState): bigint[] | null {
+  if (gs.type !== "pago" || !gs.onchain?.entryFee) return null;
+  const pool = BigInt(gs.onchain.entryFee) * BigInt(gs.players.length);
+  const fee = (pool * 5n) / 100n;
+  if (gs.mode !== "CLASSIC") return [pool - fee];
+  const n = Math.min(3, gs.players.length - 1);
+  const second = (pool * 20n) / 100n;
+  const third = (pool * 15n) / 100n;
+  const first = pool - fee - (n > 1 ? second : 0n) - (n > 2 ? third : 0n);
+  return [first, second, third].slice(0, n);
+}
+
+const fmt = fmtAmount;
 
 const Game: React.FC = () => {
   const { lobbyId } = useParams<{ lobbyId: string }>();
   const navigate = useNavigate();
   const session = getUserSession();
-  const { t } = useTranslation()
+  const { t } = useTranslation();
+  const [showLog, setShowLog] = useState(false);
 
-  // Verificar autenticación y lobbyId
   useEffect(() => {
-    if (!session) {
-      navigate("/auth");
-      return;
-    }
-    if (!lobbyId) {
-      navigate("/lobbies");
-      return;
-    }
+    if (!session) navigate("/auth");
+    else if (!lobbyId) navigate("/lobbies");
   }, [session, lobbyId, navigate]);
 
   const {
     gameState,
     playerHand,
     isMyTurn,
-    currentPlayer,
     isGameFinished,
     startGame,
     playCard,
     drawCard,
     passTurn,
     chooseWildColor,
-    cancelLobbyOnChain,
     isLoading,
     error,
     showColorPicker,
@@ -48,22 +58,8 @@ const Game: React.FC = () => {
     prizeDistributionTx,
     actionLog,
     leaveGame,
-    // autoDistributePrizes manejado internamente por useGame
   } = useGame(lobbyId || "");
   const { cancelLobby } = useSocket();
-
-  // AUTO-DISTRIBUTION: Manejado ÚNICAMENTE desde el evento del servidor
-  // 'game:distributePrizes' en useGame.ts para evitar llamadas duplicadas
-
-  // Debug: Log prize distribution TX state
-  React.useEffect(() => {
-    if (prizeDistributionTx) {
-      console.log(
-        "🎉 [Game.tsx] prizeDistributionTx disponible:",
-        prizeDistributionTx
-      );
-    }
-  }, [prizeDistributionTx]);
 
   if (!lobbyId || !session) {
     return null; // Se redirigirá en useEffect
@@ -71,14 +67,7 @@ const Game: React.FC = () => {
 
   const formatPlayerForLog = (playerName?: string) => {
     if (!playerName) return "-";
-    const player = gameState?.players.find((item) => item.username === playerName);
-    const identifier = player?.walletAddress || playerName;
-
-    if (identifier.length > 12) {
-      return `${identifier.slice(0, 6)}...${identifier.slice(-4)}`;
-    }
-
-    return identifier;
+    return displayName(playerName);
   };
 
   const getCardLabel = (card?: CardType) => {
@@ -188,640 +177,380 @@ const Game: React.FC = () => {
     return entries.findIndex((item) => item.playerName === entry.playerName) === index;
   }).slice(0, Math.max(4, gameState?.players.length || 4));
 
-  // Lobby en espera - mostrar si NO HAY gameState (lobby) o si está waiting
-  if (!gameState || gameState?.status === "waiting") {
-    // Si no hay gameState, mostrar loading
-    if (!gameState) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 p-4 flex items-center justify-center relative overflow-hidden">
-          {/* Animated background */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
-            <div
-              className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse"
-              style={{ animationDelay: "1s" }}
-            ></div>
-          </div>
-
-          <div className="relative z-10 bg-white rounded-2xl shadow-2xl p-12 text-center border border-gray-200">
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600 mx-auto mb-6"></div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
-              {t('game_loading')}
-            </h2>
-            <p className="text-gray-600">{t('game_connecting')}</p>
-          </div>
-        </div>
-      );
-    }
-
+  // ---------- Cargando ----------
+  if (!gameState) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-green-950 to-blue-950 p-4 relative overflow-hidden">
-        {/* Animated background */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-green-500/10 rounded-full blur-3xl animate-pulse"></div>
-          <div
-            className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"
-            style={{ animationDelay: "1.5s" }}
-          ></div>
+      <div className={`${PAGE_BG} flex items-center justify-center`}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-14 w-14 border-4 border-white/20 border-t-yellow-400 mx-auto mb-5" />
+          <h2 className="text-2xl font-bold">{t("game_loading")}</h2>
+          <p className="text-white/60">{t("game_connecting")}</p>
         </div>
+      </div>
+    );
+  }
 
-        <div className="max-w-5xl mx-auto relative z-10">
-          <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl shadow-2xl p-8 border border-gray-200">
-            {/* Header con nombre del lobby */}
-            <div className="mb-8">
-              <div className="inline-flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <span className="text-2xl">🃏</span>
-                </div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-                  {`Lobby: ${gameState.name}`}
-                </h1>
-              </div>
+  const isHost = session.id === gameState.hostId;
+  const isPaid = gameState.type === "pago" && !!gameState.onchain;
+  const network = gameState.onchain?.chain;
+  const prizes = prizesFor(gameState);
+  const pot = isPaid ? BigInt(gameState.onchain!.entryFee) * BigInt(gameState.players.length) : 0n;
 
-              {/* Mostrar costo de entrada si es lobby pago */}
-              {gameState.type === "pago" && gameState.onchain && (
-                <div className="mt-4 inline-flex items-center gap-3 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-400 text-yellow-900 px-6 py-3 rounded-xl shadow-lg">
-                  <span className="text-2xl">💰</span>
-                  <div>
-                    <div className="text-xs font-medium text-yellow-700 mb-1">
-                      {t('game_entry_cost')}
-                    </div>
-                    <span className="font-bold text-lg">
-                      {(() => {
-                        try {
-                          const weiValue =
-                            gameState.entryCost ||
-                            gameState.onchain?.entryFee ||
-                            "0";
-                          const ethValue = parseFloat(weiValue) / 1e18;
-                          return `${ethValue} ${
-                            gameState.onchain?.token || "ETH"
-                          }`;
-                        } catch {
-                          return "N/A";
-                        }
-                      })()}
-                    </span>
-                  </div>
+  // ---------- Sala de espera ----------
+  if (gameState.status === "waiting") {
+    const max = gameState.maxPlayers ?? 8;
+    const empty = Math.max(0, max - gameState.players.length);
+    return (
+      <div className={`${PAGE_BG} px-4 py-10`}>
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-8">
+            <p className="text-emerald-300/80 text-sm uppercase tracking-widest">{t("waiting_players")}</p>
+            <h1 className="text-4xl sm:text-5xl font-extrabold mt-1">{gameState.name}</h1>
+            <p className="text-white/60 mt-2">{t("seats_count", { count: gameState.players.length, max })}</p>
+          </div>
+
+          {isPaid && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+              {[
+                [t("entry_label"), fmt(BigInt(gameState.onchain!.entryFee), network)],
+                [t("prize_pool"), fmt(pot, network)],
+                [t("mode_label"), gameState.mode ?? "BEAST"],
+                [t("network_label"), NETWORKS[network as NetworkKey]?.chain.name ?? network],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-3 text-center">
+                  <div className="text-xs text-white/50">{label}</div>
+                  <div className="font-bold text-yellow-300 truncate">{value}</div>
                 </div>
-              )}
+              ))}
             </div>
+          )}
 
-            {/* Jugadores */}
-              <div className="mb-8">
-              <div className="flex items-center gap-3 mb-4">
-                <h2 className="text-xl font-bold text-gray-800">{t('game_players')}</h2>
-                <div className="flex-1 h-px bg-gradient-to-r from-green-200 to-blue-200"></div>
-                <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white px-4 py-1 rounded-full font-bold text-sm">
-                  {gameState.players.length}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10">
+            {gameState.players.map((player) => (
+              <div
+                key={player.id}
+                className="animate-card-deal rounded-2xl bg-white/5 ring-1 ring-white/10 p-4 flex flex-col items-center gap-2"
+              >
+                <Avatar seed={player.walletAddress || player.username} size={52} />
+                <span className="font-bold text-sm max-w-full truncate">{displayName(player.username)}</span>
+                <div className="flex gap-1 text-xs">
+                  {player.isHost && <span className="px-2 rounded-full bg-yellow-400/20 text-yellow-300">👑 Host</span>}
+                  {player.id === session.id && <span className="px-2 rounded-full bg-blue-500/30 text-blue-200">{t("you_label")}</span>}
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {gameState.players.map((player) => (
-                  <div
-                    key={player.socketId}
-                    className="flex items-center justify-between p-4 bg-gradient-to-br from-gray-50 to-white rounded-xl border-2 border-gray-200 hover:border-green-400 transition-all shadow-sm hover:shadow-md"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
-                        <span className="text-white font-bold text-sm">
-                          {player.username.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-gray-800">
-                            {player.username.slice(0, 5)}...
-                            {player.username.slice(-5)}
-                          </span>
-                          {player.isHost && (
-                            <span
-                              title="Creador del lobby"
-                              className="text-yellow-500 text-lg"
-                            >
-                              👑
-                            </span>
-                          )}
-                          {player.id === session?.id && (
-                            <span className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full font-semibold">
-                              {t('you_label')}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-gray-500 font-mono">
-                          {player.walletAddress.slice(0, 5)}...
-                          {player.walletAddress.slice(-5)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            ))}
+            {Array.from({ length: Math.min(empty, 8) }).map((_, i) => (
+              <div
+                key={`empty-${i}`}
+                className="rounded-2xl border-2 border-dashed border-white/10 p-4 flex flex-col items-center justify-center gap-2 text-white/30 min-h-[124px]"
+              >
+                <div className="w-[52px] h-[52px] rounded-full border-2 border-dashed border-white/15" />
+                <span className="text-sm">{t("empty_seat")}</span>
               </div>
-            </div>
+            ))}
+          </div>
 
-            {/* Controles */}
-            <div className="flex flex-wrap gap-3 justify-center">
+          <div className="flex flex-wrap gap-3 justify-center">
+            {isHost ? (
               <button
                 onClick={startGame}
-                disabled={
-                  isLoading ||
-                  gameState.players.length < 2 ||
-                  session?.id !== gameState.hostId
-                }
-                className="px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed font-bold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:transform-none"
+                disabled={isLoading || gameState.players.length < 2}
+                className="px-10 py-4 rounded-2xl text-lg font-bold text-black bg-gradient-to-r from-yellow-300 to-orange-400 shadow-[0_0_30px_rgba(250,204,21,0.35)] hover:scale-105 transition-transform disabled:opacity-40 disabled:hover:scale-100"
               >
-                {session?.id !== gameState.hostId
-                  ? t('game_start_only_host')
-                  : isLoading
-                  ? t('game_starting')
-                  : t('game_start')}
+                {isLoading ? t("game_starting") : t("game_start")}
               </button>
-
-              {session?.id === gameState.hostId &&
-                gameState.status === "waiting" && (
-                  <CancelLobbyButton
-                    lobbyId={gameState.id}
-                    cancelLobbyOnChain={cancelLobbyOnChain}
-                    cancelLobby={cancelLobby}
-                    isOnchainLobby={gameState.type === "pago"}
-                  />
-                )}
-
-              <button
-                onClick={leaveGame}
-                className="px-6 py-3 bg-gray-600 text-white rounded-xl hover:bg-gray-700 font-bold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-              >
-                {t('game_leave')}
-              </button>
-            </div>
-
-            {gameState.players.length < 2 && (
-              <div className="mt-6 flex items-center justify-center gap-3 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-xl">
-                <span className="text-2xl">⏳</span>
-                <p className="text-yellow-800 font-medium">
-                  {t('game_need_two', { count: 2 })}
-                </p>
-              </div>
+            ) : (
+              <p className="w-full text-center text-white/60 mb-2">{t("waiting_for_host")}</p>
             )}
+            {isHost && <CancelLobbyButton lobbyId={gameState.id} cancelLobby={cancelLobby} isOnchainLobby={isPaid} />}
+            <button
+              onClick={leaveGame}
+              className="px-6 py-4 rounded-2xl font-bold bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              {t("game_leave")}
+            </button>
           </div>
+
+          {gameState.players.length < 2 && (
+            <p className="mt-6 text-center text-yellow-200/80">⏳ {t("game_need_two", { count: 2 })}</p>
+          )}
+          {error && <p className="mt-6 text-center text-red-300">❌ {error}</p>}
         </div>
       </div>
     );
   }
 
-  // Juego terminado
+  // ---------- Fin de partida ----------
   if (isGameFinished) {
+    const ranked = winners.length ? winners : [];
+    const iWon = ranked[0]?.username === session.username;
+    // Orden visual del podio: 2º, 1º, 3º
+    const podium = [ranked[1], ranked[0], ranked[2]];
+    const heights = ["h-28", "h-40", "h-20"];
+    const ranks = [2, 1, 3];
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-950 via-pink-950 to-indigo-950 p-4 relative overflow-hidden">
-        {/* Animated background */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse"></div>
-          <div
-            className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl animate-pulse"
-            style={{ animationDelay: "1s" }}
-          ></div>
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-yellow-500/5 rounded-full blur-3xl"></div>
-        </div>
+      <div className={`${PAGE_BG} relative overflow-hidden px-4 py-10`}>
+        {iWon &&
+          Array.from({ length: 40 }).map((_, i) => (
+            <span
+              key={i}
+              className="confetti"
+              style={{
+                left: `${(i * 97) % 100}%`,
+                background: ["#facc15", "#ef4444", "#3b82f6", "#22c55e", "#a855f7"][i % 5],
+                animationDuration: `${3 + (i % 5)}s`,
+                animationDelay: `${(i % 10) * 0.3}s`,
+              }}
+            />
+          ))}
+        <div className="relative max-w-3xl mx-auto text-center">
+          <h1 className="text-5xl sm:text-6xl font-extrabold bg-gradient-to-r from-yellow-300 via-orange-400 to-red-500 bg-clip-text text-transparent">
+            {iWon ? t("you_won") : t("game_finished")}
+          </h1>
 
-        <div className="max-w-5xl mx-auto relative z-10">
-          <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl shadow-2xl p-10 text-center border border-gray-200">
-            {/* Header con confetti effect */}
-            <div className="mb-8">
-              <div className="inline-block mb-4 animate-bounce">
-                <div className="text-6xl">🎉</div>
-              </div>
-              <h1 className="text-4xl font-extrabold bg-gradient-to-r from-purple-600 via-pink-600 to-orange-600 bg-clip-text text-transparent mb-2">
-                {t('game_finished')}
-              </h1>
-              <div className="h-1 w-24 bg-gradient-to-r from-purple-400 to-pink-400 mx-auto rounded-full"></div>
-            </div>
-
-            {/* Mensaje del sistema (incluye info de premios) */}
-            {gameMessage && (
-              <div className="mb-8 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-300 shadow-lg animate-fade-in">
-                <p className="text-blue-900 font-semibold text-lg">
-                  {gameMessage}
-                </p>
-              </div>
-            )}
-
-            {/* Podium mejorado */}
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-gray-800 mb-6">
-                {t('game_results')}
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {winners.map((winner, index) => (
+          <div className="mt-12 flex items-end justify-center gap-3 sm:gap-5">
+            {podium.map((w, col) =>
+              w ? (
+                <div key={w.username} className="flex flex-col items-center w-28 sm:w-36">
+                  <Avatar seed={w.walletAddress || w.username} size={col === 1 ? 72 : 56} />
+                  <span className="font-bold text-sm mt-2 max-w-full truncate">{displayName(w.username)}</span>
+                  {prizes?.[ranks[col] - 1] !== undefined && (
+                    <span className="text-yellow-300 font-bold text-sm">{fmt(prizes[ranks[col] - 1], network)}</span>
+                  )}
                   <div
-                    key={winner.socketId}
-                    className={`relative p-6 rounded-2xl border-4 transform transition-all hover:scale-105 ${
-                      index === 0
-                        ? "bg-gradient-to-br from-yellow-400 to-yellow-600 border-yellow-500 shadow-2xl shadow-yellow-500/50"
-                        : index === 1
-                        ? "bg-gradient-to-br from-gray-300 to-gray-500 border-gray-400 shadow-xl"
-                        : index === 2
-                        ? "bg-gradient-to-br from-orange-400 to-orange-600 border-orange-500 shadow-lg"
-                        : "bg-gradient-to-br from-blue-100 to-blue-200 border-blue-300"
+                    className={`animate-rise mt-2 w-full ${heights[col]} rounded-t-xl flex items-start justify-center pt-2 text-3xl font-extrabold ${
+                      col === 1
+                        ? "bg-gradient-to-b from-yellow-300 to-yellow-600 text-yellow-900"
+                        : col === 0
+                        ? "bg-gradient-to-b from-slate-200 to-slate-400 text-slate-700"
+                        : "bg-gradient-to-b from-orange-300 to-orange-600 text-orange-900"
                     }`}
+                    style={{ animationDelay: `${[0.3, 0, 0.6][col]}s` }}
                   >
-                    {/* Medal */}
-                    <div className="absolute -top-6 left-1/2 transform -translate-x-1/2">
-                      <span className="text-5xl">
-                        {index === 0
-                          ? "🥇"
-                          : index === 1
-                          ? "🥈"
-                          : index === 2
-                          ? "🥉"
-                          : "🏅"}
-                      </span>
-                    </div>
-
-                    <div className="pt-8">
-                      <div className="flex items-center justify-center gap-2 mb-2">
-                        <span className="font-bold text-xl text-white drop-shadow-lg">
-                          {index + 1}°
-                        </span>
-                        <span className="text-white font-extrabold text-lg">
-                          {winner.username.slice(0, 5)}...
-                          {winner.username.slice(-5)}
-                        </span>
-                        {winner.socketId === session.id && (
-                          <span className="px-3 py-1 bg-white/30 backdrop-blur-sm text-white text-xs rounded-full font-bold border-2 border-white/50">
-                            {t('you_label')}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-white/90 text-sm font-semibold">
-                        Lugar {index === 0 ? "🏆" : ""}
-                      </div>
-                    </div>
+                    {ranks[col]}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* TX de distribución de premios */}
-            {prizeDistributionTx && (
-              <div className="mb-8 bg-gradient-to-br from-green-600 via-emerald-600 to-teal-600 text-white p-8 rounded-2xl shadow-2xl border-4 border-green-400 animate-fade-in">
-                <div className="text-center mb-4">
-                  <div className="flex items-center justify-center gap-3 mb-3">
-                    <span className="text-5xl animate-pulse">🎉</span>
-                    <h3 className="font-bold text-3xl">
-                      {t('game_prizes_distributed')}
-                    </h3>
-                  </div>
-                  <p className="text-green-100 font-medium text-lg mb-2">
-                    Transacción confirmada en blockchain
-                  </p>
-                </div>
-                <div className="bg-black/30 backdrop-blur-sm px-4 py-3 rounded-xl font-mono text-xs break-all mb-4 text-center border border-white/20">
-                  {prizeDistributionTx.hash}
-                </div>
-                <a
-                  href={prizeDistributionTx.explorerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full bg-white text-green-700 px-8 py-4 rounded-xl font-bold hover:bg-green-50 transition-all shadow-lg hover:shadow-xl text-center transform hover:scale-105"
-                >
-                  {t('game_view_tx')}
-                </a>
-              </div>
-            )}
-
-            <button
-              onClick={leaveGame}
-              className="px-10 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 font-bold text-lg shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
-            >
-              {t('back_to_lobbies')}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Juego en progreso
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-green-950 to-teal-950 p-4 relative overflow-hidden">
-      {/* Animated background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-green-500/10 rounded-full blur-3xl animate-pulse"></div>
-        <div
-          className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "1.5s" }}
-        ></div>
-      </div>
-
-      <div className="max-w-[1500px] mx-auto relative z-10">
-        {/* Header del juego mejorado */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 bg-gradient-to-r from-emerald-900/50 to-green-900/50 backdrop-blur-sm rounded-2xl p-4 sm:p-6 border border-emerald-700/30 shadow-xl">
-          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
-              <span className="text-2xl">🃏</span>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-white">
-                {gameState?.name}
-              </h1>
-              <p className="text-emerald-200 text-sm">{t('game_in_progress')}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {currentPlayer && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl shadow-lg">
-                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                <span className="font-semibold">{t('turn_label')} {currentPlayer}</span>
-              </div>
-            )}
-
-            <button
-              onClick={leaveGame}
-              className="px-5 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-            >
-              {t('game_leave')}
-            </button>
-          </div>
-        </div>
-
-        {/* Mensaje del juego */}
-        {gameMessage && (
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 rounded-xl mb-6 text-center animate-fade-in shadow-lg border border-blue-400">
-            <p className="font-bold text-lg">{gameMessage}</p>
-          </div>
-        )}
-
-        {/* TX de distribución de premios */}
-        {prizeDistributionTx && (
-          <div className="bg-gradient-to-br from-green-600 via-emerald-600 to-teal-600 text-white px-8 py-6 rounded-2xl mb-6 shadow-2xl border-4 border-green-400 animate-fade-in">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="text-4xl animate-pulse">🎉</span>
-                  <h3 className="font-bold text-2xl">¡Premios Distribuidos!</h3>
-                </div>
-                <p className="text-green-100 font-medium mb-3">
-                  Transacción confirmada en blockchain
-                </p>
-                <div className="bg-black/30 backdrop-blur-sm px-4 py-3 rounded-xl font-mono text-xs break-all border border-white/20">
-                  {prizeDistributionTx.hash}
-                </div>
-              </div>
-              <a
-                href={prizeDistributionTx.explorerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-white text-green-700 px-6 py-3 rounded-xl font-bold hover:bg-green-50 transition-all shadow-lg hover:shadow-xl flex items-center gap-2 transform hover:scale-105"
-              >
-                {t('game_view_tx')}
-              </a>
-            </div>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="bg-gradient-to-r from-red-600 to-red-700 text-white px-6 py-4 rounded-xl mb-6 text-center shadow-lg border-2 border-red-400 animate-fade-in">
-            <p className="font-bold text-lg">❌ {error}</p>
-          </div>
-        )}
-
-        {/* Area principal del juego */}
-        <div className="grid grid-cols-1 xl:grid-cols-[260px_minmax(0,1fr)_260px] gap-4">
-          {/* Log de partida (lado izquierdo) */}
-          <div className="xl:col-span-1">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 shadow-2xl border border-slate-700">
-              <h3 className="text-white font-bold mb-3 text-lg flex items-center gap-2">
-                <span>📝</span> {t('game_log_title')}
-              </h3>
-              {latestLogByPlayer.length === 0 ? (
-                <div className="p-3 rounded-xl bg-slate-700/50 border border-slate-600 text-slate-300 text-sm">
-                  {t('game_log_empty')}
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {latestLogByPlayer.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="p-3 rounded-xl bg-slate-700/70 border border-slate-600 text-left animate-fade-in"
-                    >
-                      <div className="text-slate-100 text-sm leading-snug">
-                        {renderLogMessage(entry)}
-                      </div>
-                      <div className="mt-1 text-[11px] text-slate-400">
-                        {new Date(entry.createdAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </div>
-                    </div>
-                  ))}
-              </div>
+                <div key={col} className="w-28 sm:w-36" />
+              )
+            )}
+          </div>
+
+          {ranked.length > 3 && (
+            <ol start={4} className="mt-6 space-y-1 text-white/60">
+              {ranked.slice(3).map((w) => (
+                <li key={w.username} className="font-semibold text-sm">
+                  {w.rank}. {displayName(w.username)}
+                </li>
+              ))}
+            </ol>
+          )}
+
+          {isPaid && (
+            <div className="mt-10 rounded-2xl bg-white/5 ring-1 ring-white/10 p-5">
+              {prizeDistributionTx ? (
+                <>
+                  <p className="font-bold text-emerald-300">✅ {t("game_prizes_distributed")}</p>
+                  <a
+                    href={prizeDistributionTx.explorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block mt-3 px-5 py-2 rounded-xl bg-emerald-500 text-black font-bold hover:bg-emerald-400"
+                  >
+                    {t("game_view_tx")}
+                  </a>
+                </>
+              ) : (
+                <p className="text-white/70 animate-pulse">{gameMessage ?? t("prize_paying")}</p>
               )}
             </div>
-          </div>
+          )}
 
-          {/* Centro del juego */}
-          <div className="xl:col-span-1 min-w-0">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 sm:p-5 text-center shadow-2xl border border-slate-700">
-              <h3 className="text-white font-bold mb-4 text-xl flex items-center justify-center gap-2">
-                <span>🎲</span> {t('game_table')}
-              </h3>
-
-              {/* Carta actual y mazo */}
-              <div className="flex flex-col sm:flex-row justify-center items-center sm:items-start gap-5 lg:gap-10 mb-5">
-                {/* Mazo */}
-                <div className="text-center flex flex-col items-center">
-                  <div className="w-28 h-40 sm:w-32 sm:h-48 lg:w-36 lg:h-52 rounded-xl border-4 border-blue-600 overflow-hidden mb-3 shadow-xl transform hover:scale-105 transition-transform cursor-pointer bg-white">
-                    <img 
-                      src={`/cartamazo.png?v=${Date.now()}`}
-                      alt="Mazo de cartas" 
-                      className="w-full h-full object-cover"
-                      draggable={false}
-                    />
-                  </div>
-                  <button
-                    onClick={drawCard}
-                    disabled={!isMyTurn || isLoading}
-                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-bold rounded-xl hover:from-blue-700 hover:to-blue-800 disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed shadow-lg transition-all duration-300 transform hover:scale-105 disabled:transform-none"
-                  >
-                    {isMyTurn ? t('draw_card') : t('waiting')}
-                  </button>
-                </div>
-
-                {/* Carta actual */}
-                <div className="text-center flex flex-col items-center">
-                  {gameState?.discardPile &&
-                    gameState.discardPile.length > 0 && (
-                      <div className="transform hover:scale-110 transition-transform duration-300 mb-3">
-                        <Card
-                          card={
-                            gameState.discardPile[
-                              gameState.discardPile.length - 1
-                            ]
-                          }
-                          size="2xl"
-                          isPlayable={false}
-                          showTooltip={true}
-                        />
-                      </div>
-                    )}
-                  {gameState?.currentActiveColor && (
-                    <div 
-                      className={`px-4 py-2 rounded-lg inline-flex items-center gap-2 border-2 shadow-md ${
-                        gameState.currentActiveColor === 'red' 
-                          ? 'bg-red-600 border-red-700'
-                          : gameState.currentActiveColor === 'yellow'
-                          ? 'bg-yellow-500 border-yellow-600'
-                          : gameState.currentActiveColor === 'green'
-                          ? 'bg-green-600 border-green-700'
-                          : gameState.currentActiveColor === 'blue'
-                          ? 'bg-blue-600 border-blue-700'
-                          : 'bg-purple-600 border-purple-700'
-                      }`}
-                    >
-                      <span className="text-xs text-white font-semibold">{t('color_active')}</span>
-                      <span className="font-bold text-sm text-white uppercase">
-                        {gameState.currentActiveColor}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Controles adicionales */}
-              {isMyTurn && (
-                <div className="flex justify-center gap-4 animate-fade-in">
-                  <button
-                    onClick={passTurn}
-                    disabled={isLoading}
-                    className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-600 text-white rounded-xl hover:from-yellow-600 hover:to-orange-700 disabled:opacity-50 font-bold shadow-lg transition-all duration-300 transform hover:scale-105"
-                  >
-                    {t('pass_turn')}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Otros jugadores (lado derecho) */}
-          <div className="xl:col-span-1">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 shadow-2xl border border-slate-700">
-              <h3 className="text-white font-bold mb-3 text-lg flex items-center gap-2">
-                <span>👥</span> {t('other_players')}
-              </h3>
-              <div className="space-y-2">
-                {gameState?.players
-                  .filter((player) => player.socketId !== session?.id)
-                  .map((player) => (
-                    <div
-                      key={player.socketId}
-                      className={`p-3 rounded-xl transition-all duration-300 ${
-                        gameState.players[gameState.currentTurnIndex]
-                          ?.socketId === player.socketId
-                          ? "bg-gradient-to-br from-green-600 to-emerald-600 shadow-lg shadow-green-500/40 border-2 border-green-400"
-                          : "bg-gradient-to-br from-slate-700 to-slate-800 border-2 border-slate-600"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
-                            gameState.players[gameState.currentTurnIndex]
-                              ?.socketId === player.socketId
-                              ? "bg-white/20"
-                              : "bg-slate-600"
-                          }`}
-                        >
-                          {player.username.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-white font-bold truncate">
-                            {player.username.slice(0, 5)}...
-                            {player.username.slice(-5)}
-                          </div>
-                          <div className="text-sm flex items-center gap-1">
-                            <span className="text-yellow-400 font-bold">
-                              🃏
-                            </span>
-                            <span className="text-gray-300 font-semibold">
-                              {player.cardCount} {t('cards')}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      {player.cardCount === 1 && (
-                        <div className="mt-2 text-center">
-                          <span className="inline-block px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full animate-pulse">
-                            ¡UNO!
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            </div>
-          </div>
+          <button
+            onClick={leaveGame}
+            className="mt-10 px-10 py-4 rounded-2xl text-lg font-bold text-black bg-gradient-to-r from-yellow-300 to-orange-400 hover:scale-105 transition-transform"
+          >
+            {t("back_to_lobbies")}
+          </button>
         </div>
+      </div>
+    );
+  }
 
-        {/* Mano del jugador */}
-        <div className="mt-6">
-          <PlayerHand
-            cards={playerHand}
-            currentCard={
-              gameState?.discardPile && gameState.discardPile.length > 0
-                ? gameState.discardPile[gameState.discardPile.length - 1]
-                : null
-            }
-            currentActiveColor={gameState?.currentActiveColor || null}
-            drawStackActive={(gameState?.drawStackCount || 0) > 0}
-            isMyTurn={isMyTurn}
-            onCardPlay={playCard}
+  // ---------- Mesa ----------
+  const myIndex = gameState.players.findIndex((p) => p.id === session.id);
+  // Rivales en orden de turno empezando por el que juega después de mí
+  const opponents =
+    myIndex >= 0
+      ? [...gameState.players.slice(myIndex + 1), ...gameState.players.slice(0, myIndex)]
+      : gameState.players;
+  const turnPlayer = gameState.players[gameState.currentTurnIndex];
+  const topCard = gameState.discardPile?.[gameState.discardPile.length - 1] ?? null;
+  const drawStackActive = (gameState.drawStackCount || 0) > 0;
+  const hasMove = playerHand.some((c) => !topCard || isValidPlay(c, topCard, gameState.currentActiveColor, drawStackActive));
+  const mustDraw = isMyTurn && !hasMove;
+
+  const logPanel = (
+    <div className="space-y-1.5">
+      {latestLogByPlayer.length === 0 ? (
+        <p className="text-white/50 text-sm">{t("game_log_empty")}</p>
+      ) : (
+        latestLogByPlayer.map((entry) => (
+          <p key={entry.id} className="text-sm text-white/80 leading-snug animate-fade-in">
+            {renderLogMessage(entry)}
+          </p>
+        ))
+      )}
+    </div>
+  );
+
+  return (
+    <div className={`${PAGE_BG} h-[100dvh] flex flex-col overflow-hidden`}>
+      {/* Barra superior */}
+      <header className="flex items-center gap-3 pl-3 sm:pl-5 pr-28 py-2 bg-black/30 backdrop-blur-sm border-b border-white/10">
+        <h1 className="text-xl tracking-wide truncate">{gameState.name}</h1>
+        {isPaid && (
+          <span className="shrink-0 px-2.5 py-0.5 rounded-full bg-yellow-400/15 text-yellow-300 text-sm font-bold">
+            💰 {fmt(pot, network)}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setShowLog((v) => !v)}
+            className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm"
+          >
+            📝<span className="hidden sm:inline"> {t("show_log")}</span>
+          </button>
+          <button
+            onClick={leaveGame}
+            aria-label={t("game_leave")}
+            className="px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-600 text-sm font-semibold whitespace-nowrap"
+          >
+            🚪<span className="hidden sm:inline"> {t("game_leave").replace(/^\S+\s/, "")}</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Rivales (mobile: fila con scroll) */}
+      <div className="md:hidden flex gap-4 overflow-x-auto px-4 pt-3 pb-1 justify-start">
+        {opponents.map((p) => (
+          <OpponentSeat key={p.id} player={p} isTurn={p.id === turnPlayer?.id} />
+        ))}
+      </div>
+
+      {/* Mesa */}
+      <main className="relative flex-1 min-h-0 flex items-center justify-center p-3 sm:p-6">
+        <div className="felt relative w-full max-w-5xl h-full max-h-[620px] rounded-[48%/42%] flex items-center justify-center">
+          {/* Rivales sentados alrededor del borde superior (desktop) */}
+          {opponents.map((p, i) => {
+            const angle = Math.PI + ((i + 1) * Math.PI) / (opponents.length + 1);
+            return (
+              <div
+                key={p.id}
+                className="hidden md:block absolute -translate-x-1/2 -translate-y-1/2"
+                style={{ left: `${50 + 47 * Math.cos(angle)}%`, top: `${50 + 50 * Math.sin(angle)}%` }}
+              >
+                <OpponentSeat player={p} isTurn={p.id === turnPlayer?.id} />
+              </div>
+            );
+          })}
+
+          <CenterPiles
+            discardPile={gameState.discardPile ?? []}
+            activeColor={gameState.currentActiveColor}
+            direction={gameState.direction}
+            drawStack={gameState.drawStackCount || 0}
+            canDraw={isMyTurn && !isLoading}
+            mustDraw={mustDraw}
+            onDraw={drawCard}
           />
         </div>
 
-        {/* Selector de color */}
-        <ColorPicker
-          isVisible={showColorPicker}
-          onColorSelect={chooseWildColor}
+        {/* Mensaje del juego */}
+        {(gameMessage || error) && (
+          <div
+            key={gameMessage ?? error}
+            className={`absolute top-3 left-1/2 -translate-x-1/2 max-w-[90%] px-4 py-2 rounded-full text-sm font-semibold shadow-lg animate-fade-in ${
+              error ? "bg-red-600" : "bg-black/70 backdrop-blur-sm"
+            }`}
+          >
+            {error ? `❌ ${error}` : gameMessage}
+          </div>
+        )}
+
+        {/* Log de jugadas */}
+        {showLog && (
+          <div className="absolute left-3 bottom-3 w-72 max-w-[85%] rounded-2xl bg-black/70 backdrop-blur-sm ring-1 ring-white/10 p-3 animate-fade-in">
+            <h3 className="font-bold text-sm mb-2">{t("game_log_title")}</h3>
+            {logPanel}
+          </div>
+        )}
+      </main>
+
+      {/* Mi lugar */}
+      <footer className="relative bg-gradient-to-t from-black/60 to-transparent">
+        <div className="flex items-center justify-center gap-3 px-4 pt-2">
+          <Avatar seed={session.walletAddress || session.username} size={32} isTurn={isMyTurn} />
+          <span
+            className={`font-bold ${isMyTurn ? "text-yellow-300 text-lg animate-heartbeat" : "text-white/60 text-sm"}`}
+          >
+            {isMyTurn ? t("your_turn") : t("turn_of", { player: displayName(turnPlayer?.username) })}
+          </span>
+          {gameState.status === "in_game" && gameState.turnMsLeft != null && (
+            <TurnClock key={gameState.turnSeq} msLeft={gameState.turnMsLeft} total={gameState.turnMs ?? 15000} />
+          )}
+          {playerHand.length === 1 && (
+            <span className="px-3 py-0.5 rounded-full bg-gradient-to-r from-red-500 to-orange-500 font-extrabold animate-bounce">
+              ¡UNO!
+            </span>
+          )}
+          {/* Sin jugada se pasa solo; el botón queda para guardarse una carta robada */}
+          {isMyTurn && gameState.drawnThisTurn && (
+            <button
+              onClick={passTurn}
+              disabled={isLoading}
+              className="ml-2 px-4 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-semibold disabled:opacity-40"
+            >
+              {t("pass_turn")}
+            </button>
+          )}
+        </div>
+        <Hand
+          cards={playerHand}
+          topCard={topCard}
+          activeColor={gameState.currentActiveColor}
+          drawStackActive={drawStackActive}
+          isMyTurn={isMyTurn}
+          onPlay={playCard}
         />
-      </div>
+      </footer>
+
+      <ColorPicker isVisible={showColorPicker} onColorSelect={chooseWildColor} />
     </div>
   );
 };
 
-// Small inline component to handle cancel confirmation and pending state
+// Botón de cancelar con confirmación y estado de carga
 const CancelLobbyButton: React.FC<{
   lobbyId: string;
   cancelLobby: (lobbyId: string) => Promise<void>;
-  cancelLobbyOnChain: () => Promise<void>;
   isOnchainLobby: boolean;
-}> = ({ lobbyId, cancelLobby, cancelLobbyOnChain, isOnchainLobby }) => {
+}> = ({ lobbyId, cancelLobby, isOnchainLobby }) => {
   const [isCancelling, setIsCancelling] = useState(false);
-  const { t } = useTranslation()
+  const { t } = useTranslation();
 
   const handleCancel = async () => {
-    const confirmMessage = isOnchainLobby 
-      ? `${t('cancel_lobby')} - ${t('cancel_lobby_confirm')}\n\n⚠️ Este lobby tiene entrada pagada. Se devolverán los fondos a todos los jugadores.`
-      : `${t('cancel_lobby')} - ${t('cancel_lobby_confirm')}`;
-      
-    const ok = window.confirm(confirmMessage);
-    if (!ok) return;
-    
+    const confirmMessage = isOnchainLobby
+      ? `${t("cancel_lobby")} - ${t("cancel_lobby_confirm")}\n\n⚠️ Este lobby tiene entrada pagada. Se devolverán los fondos a todos los jugadores.`
+      : `${t("cancel_lobby")} - ${t("cancel_lobby_confirm")}`;
+    if (!window.confirm(confirmMessage)) return;
+
     setIsCancelling(true);
     try {
-      if (isOnchainLobby) {
-        // Lobby con entrada pagada - cancelar on-chain (incluye refund)
-        await cancelLobbyOnChain();
-      } else {
-        // Lobby gratuito - solo cancelar en el servidor
-        await cancelLobby(lobbyId);
-      }
+      // En mesas pagas el servidor cancela on-chain y el contrato devuelve las entradas
+      await cancelLobby(lobbyId);
     } catch (err) {
-      console.error("Error cancelando lobby:", err);
-      alert(
-        t('cancel_lobby') + ': ' + (err instanceof Error ? err.message : String(err))
-      );
+      alert(t("cancel_lobby") + ": " + tErr(err instanceof Error ? err.message : String(err)));
     } finally {
       setIsCancelling(false);
     }
@@ -831,13 +560,9 @@ const CancelLobbyButton: React.FC<{
     <button
       onClick={handleCancel}
       disabled={isCancelling}
-      className={`px-6 py-3 font-bold rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 disabled:transform-none ${
-        isCancelling
-          ? "bg-red-500 text-white"
-          : "bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white"
-      }`}
+      className="px-6 py-4 rounded-2xl font-bold bg-red-600/80 hover:bg-red-600 transition-colors disabled:opacity-50"
     >
-      {isCancelling ? t('canceling') : t('cancel_lobby')}
+      {isCancelling ? t("canceling") : t("cancel_lobby")}
     </button>
   );
 };

@@ -45,3 +45,10 @@ cloudflared/
 *.crt
 *.p12
 *.json.credential
+
+# Build artifacts
+out/
+cache/
+.next/
+broadcast/*/31337/
+!.env.example

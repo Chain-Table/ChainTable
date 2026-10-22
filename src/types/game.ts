@@ -1,3 +1,4 @@
+import type { NetworkKey } from '../config/chains';
 // Tipos para el juego UNO
 export interface Card {
   id?: string;
@@ -34,6 +35,8 @@ export interface GameState {
   status: "waiting" | "in_game" | "finished";
   players: GamePlayer[];
   hostId: string;
+  maxPlayers?: number;
+  mode?: 'BEAST' | 'CLASSIC';
 
   // Estado del juego
   drawPile: Card[];
@@ -45,6 +48,11 @@ export interface GameState {
   // Mecánicas especiales
   drawStackCount: number; // Cartas acumuladas por +2/+4
   drawStackActive: boolean;
+  turnSeq?: number;
+  turnMs?: number;
+  turnMsLeft?: number | null; // ms que le quedan al turno al momento de recibir el estado
+  drawnThisTurn?: boolean;
+  awaitingColor?: boolean;
   hasDrawnCard: Record<string, boolean>; // Por socketId
 
   // Resultados
@@ -55,15 +63,11 @@ export interface GameState {
   type?: "gratis" | "publico" | "privado" | "pago";
   entryCost?: string; // Entry cost in wei for paid lobbies
   onchain?: {
-    chain: "sepolia" | "ronin" | "ronin-saigon";
+    chain: NetworkKey;
     contract: string;
-    lobbyId: number;
-    token?: string;
-    entryFee?: string;
-    txHash?: string;
-    joinTxHash?: string;
+    lobbyId: string;
+    entryFee: string; // wei, leído del contrato por el servidor
   };
-  onchainLobbyId?: number;
 }
 
 // Eventos WebSocket del juego
@@ -117,6 +121,7 @@ export interface GameUpdateData {
   currentPlayerName: string | null;
   currentActiveColor: string | null;
   cardsDrawn?: number;
+  auto?: boolean | "timeout"; // jugada hecha por el server (sin jugada posible o tiempo agotado)
 }
 
 export interface GameLogEntry {
