@@ -10,6 +10,7 @@ import { useSocket } from "../hooks/useSocket";
 import { getUserId, getUserSession, clearUserSession, setSessionWallet } from "../utils/userSession";
 import { displayName } from "../utils/gameUtils";
 import { Avatar } from "../components/Table";
+import { tErr } from "../i18n";
 
 // Cupo on-chain de las mesas pagas; el host puede empezar antes con 2+
 const MAX_PAID_PLAYERS = 8;
@@ -23,7 +24,7 @@ const TYPE_STYLE: Record<LobbyType, { icon: string; badge: string; key: string }
   pago: { icon: "💰", badge: "bg-yellow-400/15 text-yellow-200 ring-yellow-300/40", key: "table_paid" },
 };
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const errMsg = (e: unknown) => tErr(e instanceof Error ? e.message : String(e));
 
 const Lobbies: React.FC = () => {
   const navigate = useNavigate();
@@ -156,9 +157,9 @@ const Lobbies: React.FC = () => {
     <div className="min-h-[100dvh] page-bg text-white">
       {/* Header */}
       <header className="sticky top-0 z-30 bg-black/40 backdrop-blur-md border-b border-white/10">
-        <div className="max-w-6xl mx-auto flex items-center gap-3 pl-4 pr-20 sm:pl-6 py-3">
+        <div className="max-w-6xl mx-auto flex items-center gap-3 pl-4 pr-28 sm:pl-6 2xl:pr-6 py-3">
           <div className="flex items-center gap-2 mr-auto">
-            <span className="text-xl sm:text-3xl font-jersey tracking-wide whitespace-nowrap">{t("title")}</span>
+            <span className="text-xl sm:text-3xl font-display tracking-wide whitespace-nowrap logo">{t("title")}</span>
             <span
               title={isConnected ? t("status_connected") : t("status_disconnected")}
               className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-400" : "bg-red-400 animate-pulse"}`}
@@ -179,7 +180,7 @@ const Lobbies: React.FC = () => {
                 {({ mounted, account, openConnectModal: connect, openAccountModal }) => (
                   <button
                     onClick={mounted && account ? openAccountModal : connect}
-                    className="block text-[11px] font-mono text-white/50 hover:text-white whitespace-nowrap"
+                    className="block text-xs font-mono text-white/60 hover:text-white whitespace-nowrap"
                   >
                     {mounted && account ? displayName(account.address) : "+ Wallet"}
                   </button>
@@ -204,13 +205,13 @@ const Lobbies: React.FC = () => {
         {/* Título + crear */}
         <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-4xl sm:text-5xl font-jersey">{t("tables_open")}</h1>
+            <h1 className="text-4xl sm:text-5xl font-display">{t("tables_open")}</h1>
             <p className="text-white/50 text-sm">{t("tables_open_sub")}</p>
           </div>
           <button
             onClick={() => setShowCreate(true)}
             disabled={!isConnected}
-            className="bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-extrabold px-6 py-3 rounded-xl shadow-lg shadow-orange-500/20 hover:brightness-110 active:scale-[0.98] transition disabled:opacity-40"
+            className="btn-shine bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-extrabold px-6 py-3 rounded-xl shadow-lg shadow-orange-500/20 hover:brightness-110 active:scale-[0.98] transition disabled:opacity-40"
           >
             ＋ {t("create_table")}
           </button>
@@ -320,7 +321,7 @@ const TableCard: React.FC<{ lobby: LobbySummary; busy?: boolean; disabled?: bool
   return (
     <article
       className={`rounded-2xl bg-white/[0.04] ring-1 ring-white/10 p-4 flex flex-col gap-3 transition ${
-        onJoin ? "hover:ring-white/30 hover:bg-white/[0.07]" : "opacity-60"
+        onJoin ? "hover:ring-yellow-300/40 hover:bg-white/[0.07] hover:-translate-y-1 hover:shadow-xl hover:shadow-black/30 animate-slide-in-up" : "opacity-60"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -398,7 +399,7 @@ const Modal: React.FC<{ title: string; onClose: () => void; children: React.Reac
         className="w-full sm:max-w-lg max-h-[92dvh] overflow-y-auto bg-slate-950 ring-1 ring-white/10 rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl animate-slide-in-up"
       >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-2xl font-jersey">{title}</h2>
+          <h2 className="text-2xl font-display">{title}</h2>
           <button onClick={onClose} aria-label={t("close")} className="text-white/50 hover:text-white text-xl">
             ✕
           </button>
@@ -562,7 +563,7 @@ const CreateModal: React.FC<{ busy: boolean; onClose: () => void; onSubmit: (f: 
         <button
           type="submit"
           disabled={!valid || busy}
-          className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-extrabold py-3 rounded-xl text-lg hover:brightness-110 transition disabled:opacity-40"
+          className="btn-shine w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-extrabold py-3 rounded-xl text-lg hover:brightness-110 transition disabled:opacity-40"
         >
           {busy
             ? t("creating")

@@ -47,7 +47,7 @@ export default function Auth() {
               />
             ))}
           </div>
-          <h1 className="text-5xl font-extrabold text-white font-jersey tracking-wide">{t("title")}</h1>
+          <h1 className="text-5xl font-extrabold text-white font-display tracking-wide logo">{t("title")}</h1>
           <p className="text-emerald-200/70 text-sm mt-1">{t("auth_brandline")}</p>
         </div>
 
@@ -71,13 +71,13 @@ export default function Auth() {
               placeholder={t("auth_alias_placeholder")}
               className="w-full bg-white/5 ring-1 ring-white/15 rounded-xl px-4 py-3 text-white text-lg placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400"
             />
-            {trimmed && !aliasOk && <p className="text-red-300 text-xs mt-2">{t("auth_alias_invalid")}</p>}
+            {trimmed && !aliasOk && <p className="text-red-300 text-sm mt-2">{t("auth_alias_invalid")}</p>}
           </div>
 
           <button
             type="submit"
             disabled={!aliasOk && !address}
-            className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-extrabold py-3 rounded-xl text-lg shadow-lg shadow-orange-500/20 hover:brightness-110 active:scale-[0.99] transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn-shine w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-extrabold py-3 rounded-xl text-lg shadow-lg shadow-orange-500/20 hover:brightness-110 active:scale-[0.99] transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {aliasOk || !address ? t("play_now") : t("auth_continue_with_wallet")}
           </button>
@@ -114,7 +114,7 @@ export default function Auth() {
             }
           </ConnectButton.Custom>
 
-          <p className="text-white/50 text-xs text-center leading-relaxed">{t("auth_wallet_prompt")}</p>
+          <p className="text-white/60 text-sm text-center leading-relaxed">{t("auth_wallet_prompt")}</p>
         </form>
       </div>
     </div>

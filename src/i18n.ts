@@ -30,7 +30,7 @@ const resources = {
       made_by: 'Hecho por',
       change_language: 'Cambiar idioma',
       // Auth
-      auth_brandline: 'Blockchain UNO Platform',
+      auth_brandline: 'UNO on-chain, con amigos',
       auth_connect_wallet: 'Conectar Wallet',
       auth_wallet_prompt: 'Las mesas gratis se juegan solo con alias. Para las mesas pagas vas a necesitar una wallet: la podés conectar ahora o después.',
       table_public: 'Pública',
@@ -145,6 +145,23 @@ const resources = {
       you_won: '¡Ganaste!',
       prize_paying: 'Pagando premios on-chain…',
       empty_seat: 'Libre',
+      msg_started: '¡Arrancó la partida!',
+      msg_drew: '{{name}} robó una carta',
+      msg_skip: '¡{{name}} te saltó el turno!',
+      msg_reverse: '¡{{name}} cambió el sentido!',
+      msg_plus2: '+2 en juego…',
+      msg_plus4: '+4 en juego…',
+      msg_stack_you: 'Tenés un +{{n}} encima: podés apilar otro si lo tenés.',
+      msg_stack_other: '{{name}} puede apilar',
+      msg_no_defense_you: 'No podés defenderte: robás las cartas acumuladas y perdés el turno.',
+      msg_no_defense_other: '{{name}} no puede defenderse y roba',
+      msg_penalty: '{{name}} se comió {{count}} cartas',
+      msg_color: '{{name}} eligió color',
+      msg_place: '🏆 ¡{{name}} salió {{rank}}°!',
+      msg_over: '¡Partida terminada!',
+      msg_prizes_paid: '✅ Premios pagados on-chain',
+      msg_lobby_closed: 'El creador cerró la mesa',
+      msg_recovering: 'Recuperando tu entrada on-chain…',
     },
   },
   en: {
@@ -174,7 +191,7 @@ const resources = {
       made_by: 'Made by',
       change_language: 'Change language',
       // Auth
-      auth_brandline: 'Blockchain UNO Platform',
+      auth_brandline: 'On-chain UNO with friends',
       auth_connect_wallet: 'Connect Wallet',
       auth_wallet_prompt: 'Free tables only need an alias. Paid tables need a wallet: connect it now or later.',
       table_public: 'Public',
@@ -289,13 +306,36 @@ const resources = {
       you_won: 'You won!',
       prize_paying: 'Paying prizes on-chain…',
       empty_seat: 'Open',
+      msg_started: 'Game on!',
+      msg_drew: '{{name}} drew a card',
+      msg_skip: '{{name}} skipped a turn!',
+      msg_reverse: '{{name}} reversed direction!',
+      msg_plus2: '+2 in play…',
+      msg_plus4: '+4 in play…',
+      msg_stack_you: 'A +{{n}} is on you: stack another one if you have it.',
+      msg_stack_other: '{{name}} can stack',
+      msg_no_defense_you: "You can't defend: you draw the stacked cards and lose your turn.",
+      msg_no_defense_other: "{{name}} can't defend and draws",
+      msg_penalty: '{{name}} took {{count}} cards',
+      msg_color: '{{name}} picked a color',
+      msg_place: '🏆 {{name}} finished {{rank}}!',
+      msg_over: 'Game over!',
+      msg_prizes_paid: '✅ Prizes paid on-chain',
+      msg_lobby_closed: 'The host closed the table',
+      msg_recovering: 'Recovering your entry on-chain…',
     },
   },
 }
 
+// Idioma: el que eligió el usuario, si no el del navegador
+const saved = (() => { try { return localStorage.getItem('i18nextLng') } catch { return null } })()
+const initial = saved || (navigator.language?.toLowerCase().startsWith('es') ? 'es' : 'en')
+
+i18n.on('languageChanged', (lng) => { document.documentElement.lang = lng })
+
 i18n.use(initReactI18next).init({
   resources,
-  lng: 'es', // default language
+  lng: initial,
   fallbackLng: 'es',
   ns: ['common'],
   defaultNS: 'common',
@@ -303,5 +343,62 @@ i18n.use(initReactI18next).init({
     escapeValue: false, // React already escapes
   },
 })
+
+// El server y los hooks devuelven errores en español: en inglés se traducen acá
+const ERRORS_EN: Record<string, string> = {
+  'Alias inválido': 'Invalid alias',
+  'El alias debe tener entre 2 y 20 caracteres': 'Alias must be 2 to 20 characters',
+  'Ese alias ya está en la mesa': 'That alias is already at the table',
+  'Color inválido': 'Invalid color',
+  'Contraseña incorrecta': 'Wrong password',
+  'Conectá tu wallet para crear una mesa paga': 'Connect your wallet to create a paid table',
+  'Conectá tu wallet para entrar a una mesa paga': 'Connect your wallet to join a paid table',
+  'Debes jugar un +2/+4 igual o robar/pasar': 'Play a matching +2/+4 or draw/pass',
+  'Debes robar una carta antes de pasar': 'Draw a card before passing',
+  'El servidor no tiene wallet de referee configurada': 'The server has no referee wallet configured',
+  'Esa mesa on-chain ya está publicada': 'That on-chain table is already listed',
+  'Esa wallet ya está en la mesa': 'That wallet is already at the table',
+  'Falta el id de la mesa on-chain': 'Missing on-chain table id',
+  'Índice de carta inválido': 'Invalid card',
+  'Juego no encontrado': 'Game not found',
+  'Jugada no válida': "You can't play that card",
+  'Jugador no encontrado': 'Player not found',
+  'La mesa on-chain es de otra wallet': 'That on-chain table belongs to another wallet',
+  'La mesa on-chain no está abierta': 'That on-chain table is not open',
+  'La mesa on-chain no se pudo empezar': "The on-chain table couldn't start",
+  'La partida terminó': 'The game is over',
+  'Lobby lleno': 'Table is full',
+  'Lobby no encontrado': 'Table not found',
+  'No encontramos tu pago on-chain para esta mesa': "We couldn't find your on-chain payment for this table",
+  'No es tu turno': "It's not your turn",
+  'No hay más cartas en el mazo': 'The deck is empty',
+  'No se pudo pagar on-chain todavía. Si no se resuelve en 24h, cualquier jugador puede pedir el reembolso desde el contrato.':
+    "Couldn't pay on-chain yet. If it isn't solved in 24h, any player can claim a refund from the contract.",
+  'Se necesitan al menos 2 jugadores': 'At least 2 players are needed',
+  'Sesión inválida': 'Invalid session',
+  'Sesión inválida, recargá la página': 'Invalid session, reload the page',
+  'Solo el host puede iniciar la partida': 'Only the host can start the game',
+  'Todos los que pagaron tienen que estar en la mesa para empezar': 'Everyone who paid must be at the table to start',
+  'Ya estás en otro lobby': "You're already at another table",
+  'Ya no estás en esta mesa': "You're no longer at this table",
+  'Ya robaste esta ronda': 'You already drew this turn',
+  'No hay conexión con el servidor': 'No connection to the server',
+  'No hay sesión de usuario activa': 'No active session',
+  'Timeout: El servidor no respondió': "The server didn't respond",
+  'Error de conexión': 'Connection error',
+  'No se pudo cancelar el lobby': "Couldn't cancel the table",
+  'Elegí un alias o conectá tu wallet': 'Pick an alias or connect your wallet',
+  // prefijos
+  'No se pudo cancelar on-chain: ': "Couldn't cancel on-chain: ",
+  'Red no soportada: ': 'Unsupported network: ',
+  'No se pudo conectar al servidor WebSocket: ': "Couldn't connect to the server: ",
+  'Error de conexión: ': 'Connection error: ',
+}
+export const tErr = (msg: string) => {
+  if (!i18n.language?.startsWith('en')) return msg
+  if (ERRORS_EN[msg]) return ERRORS_EN[msg]
+  const k = Object.keys(ERRORS_EN).find((k) => k.endsWith(' ') && msg.startsWith(k))
+  return k ? ERRORS_EN[k] + msg.slice(k.length) : msg
+}
 
 export default i18n

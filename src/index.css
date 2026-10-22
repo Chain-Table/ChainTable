@@ -91,37 +91,9 @@
   animation: glow 2s ease-in-out infinite;
 }
 
-/* Tipografía: Jersey 25 para títulos principales */
-/* Aplica la fuente a h1-h6 y provee una clase utilitaria .font-jersey */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: "Jersey 25", system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial;
-}
-
-.font-jersey {
-  font-family: "Jersey 25", system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial;
-}
-
-/* Aplicar Jersey 25 a la mayoría de textos y controles para que botones y textos explicativos usen la misma fuente */
-body,
-button,
-input,
-textarea,
-select,
-label,
-p,
-span,
-a,
-li {
-  /* Keep existing global fallback but prefer the Tailwind utility when used */
-  font-family: "Jersey 25", system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial;
+/* Tipografía: Lilita One para títulos, Nunito (font-sans de Tailwind) para el resto */
+h1, h2, h3, h4, h5, h6 {
+  font-family: theme("fontFamily.display");
 }
 
 /* Ajustes opcionales de suavizado y legibilidad */
@@ -164,12 +136,7 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
-/* Tailwind utility for font-jersey (maps to theme.extend.fontFamily.jersey) */
 @layer utilities {
-  .font-jersey {
-    font-family: theme("fontFamily.jersey");
-  }
-
   /* Utilidades personalizadas */
   .text-balance {
     text-wrap: balance;
@@ -294,4 +261,80 @@ body {
 /* Fondo común de las páginas: paño verde que se apaga hacia abajo */
 .page-bg {
   background: radial-gradient(ellipse at top, #14532d 0%, #052e16 45%, #020617 100%);
+}
+
+/* ===== Viveza ===== */
+
+/* Logo con sombra en colores de carta */
+.logo {
+  text-shadow: 0.06em 0.06em 0 #ef4444, 0.12em 0.12em 0 #facc15;
+}
+
+/* Fondo: palos de cartas que se desplazan muy despacio */
+.page-bg {
+  position: relative;
+  isolation: isolate;
+}
+.page-bg::before {
+  content: "";
+  position: fixed;
+  inset: -160px;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cg fill='white' font-size='30' font-family='serif'%3E%3Ctext x='12' y='42'%3E%E2%99%A0%3C/text%3E%3Ctext x='92' y='62'%3E%E2%99%A5%3C/text%3E%3Ctext x='44' y='122'%3E%E2%99%A6%3C/text%3E%3Ctext x='122' y='146'%3E%E2%99%A3%3C/text%3E%3C/g%3E%3C/svg%3E");
+  animation: suits-drift 50s linear infinite;
+}
+@keyframes suits-drift {
+  to {
+    transform: translate(160px, 160px);
+  }
+}
+
+/* Brillo que cruza los botones principales */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s, filter 0.15s;
+}
+.btn-shine:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+.btn-shine:disabled::after {
+  display: none;
+}
+.btn-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: shine 4s ease-in-out infinite;
+}
+@keyframes shine {
+  55%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+/* "¡Tu turno!" late */
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  15% { transform: scale(1.12); }
+  30% { transform: scale(1); }
+  45% { transform: scale(1.08); }
+}
+.animate-heartbeat {
+  display: inline-block;
+  animation: heartbeat 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

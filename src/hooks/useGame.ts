@@ -6,6 +6,8 @@ import { getUserSession } from '../utils/userSession';
 import { useSocket } from './useSocket';
 import { leavePaidLobby } from '../utils/chainTable';
 import type { NetworkKey } from '../config/chains';
+import i18n, { tErr } from '../i18n';
+import { displayName } from '../utils/gameUtils';
 
 interface UseGameReturn {
   // Estado
@@ -185,7 +187,7 @@ export function useGame(lobbyId: string): UseGameReturn {
         setError(null);
       } else {
         console.error('❌ Error obteniendo lobby:', data.error);
-        setError(data.error || 'Lobby no encontrado');
+        setError(tErr(data.error || 'Lobby no encontrado'));
         // Si el lobby no existe en el servidor, limpiamos y volvemos a la lista
         try { localStorage.removeItem('activeLobbyId'); } catch { /* ignore */ }
         // Pequeño delay para dejar que la UI muestre el error antes de navegar
@@ -209,7 +211,7 @@ export function useGame(lobbyId: string): UseGameReturn {
       setGameState((prev) => ({ ...prev, ...newGameState }));
       setActionLog([]);
       addActionLogEntry({ action: 'started' });
-      showGameMessage(`¡La partida ha comenzado!`);
+      showGameMessage(i18n.t('msg_started'));
       setError(null);
       setIsLoading(false);
     };
@@ -229,42 +231,42 @@ export function useGame(lobbyId: string): UseGameReturn {
       switch (data.action) {
         case 'draw':
           if (data.playerPlayed !== session?.username) {
-            showGameMessage(`${data.playerPlayed} robó una carta`);
+            showGameMessage(i18n.t('msg_drew', { name: displayName(data.playerPlayed) }));
           }
           break;
         case 'skip':
-          showGameMessage(`¡${data.playerPlayed} jugó SKIP!`);
+          showGameMessage(i18n.t('msg_skip', { name: displayName(data.playerPlayed) }));
           break;
         case 'reverse':
-          showGameMessage(`¡${data.playerPlayed} jugó REVERSE!`);
+          showGameMessage(i18n.t('msg_reverse', { name: displayName(data.playerPlayed) }));
           break;
         case 'drawTwo_played':
-          showGameMessage(`+2 en juego...`);
+          showGameMessage(i18n.t('msg_plus2'));
           break;
         case 'drawFour_played':
-          showGameMessage(`+4 en juego...`);
+          showGameMessage(i18n.t('msg_plus4'));
           break;
         case 'stack_allowed':
           // Indica al penalizado que puede responder (apilar) si tiene la carta
           if (data.currentPlayerName === session?.username) {
-            showGameMessage('Tienes un stack sobre ti. Puedes apilar +2/+4 si tienes la carta.');
+            showGameMessage(i18n.t('msg_stack_you', { n: data.playedCard?.value === 'WildDrawFour' ? 4 : 2 }));
           } else {
-            showGameMessage(`${data.playerPlayed} puede ser apilado`);
+            showGameMessage(i18n.t('msg_stack_other', { name: displayName(data.currentPlayerName || '') }));
           }
           break;
         case 'stack_not_allowed':
           // Indica que no hay defensa posible; el jugador debería robar/pasar
           if (data.currentPlayerName === session?.username) {
-            showGameMessage('No puedes defenderte. Debes robar las cartas acumuladas y se te saltará el turno.');
+            showGameMessage(i18n.t('msg_no_defense_you'));
           } else {
-            showGameMessage(`${data.playerPlayed} no puede defenderse y deberá robar`);
+            showGameMessage(i18n.t('msg_no_defense_other', { name: displayName(data.currentPlayerName || '') }));
           }
           break;
         case 'draw_penalty':
-          showGameMessage(`${data.playerPlayed} recibió ${data.cardsDrawn} cartas de penalidad`);
+          showGameMessage(i18n.t('msg_penalty', { name: displayName(data.playerPlayed), count: data.cardsDrawn }));
           break;
         case 'color_chosen':
-          showGameMessage(`${data.playerPlayed} eligió color`);
+          showGameMessage(i18n.t('msg_color', { name: displayName(data.playerPlayed) }));
           break;
       }
     };
@@ -284,39 +286,39 @@ export function useGame(lobbyId: string): UseGameReturn {
     // Winner found
     const handleWinner = ({ username, rank }: { username: string; rank: number; gameState: GameState }) => {
       addActionLogEntry({ action: 'winner', playerName: username });
-      showGameMessage(`🏆 ${username} salió en ${rank}° lugar!`, 4000);
+      showGameMessage(i18n.t('msg_place', { name: displayName(username), rank }), 4000);
     };
 
     // Game over
     const handleGameOver = ({ gameState: finalState }: { gameState: GameState }) => {
       setGameState((prev) => ({ ...prev, ...finalState }));
       addActionLogEntry({ action: 'over' });
-      showGameMessage('¡Partida terminada!', 5000);
+      showGameMessage(i18n.t('msg_over'), 5000);
       setIsLoading(false);
     };
 
     // El servidor (referee) paga on-chain y nos manda el tx
     const handlePrizesDistributed = (data: { txHash: string; explorerUrl: string }) => {
       setPrizeDistributionTx({ hash: data.txHash, explorerUrl: data.explorerUrl });
-      showGameMessage('✅ Premios pagados on-chain', 8000);
+      showGameMessage(i18n.t('msg_prizes_paid'), 8000);
     };
 
     const handlePrizeError = (data: { error: string }) => {
       console.error('❌ Error en distribución:', data.error);
-      showGameMessage(`❌ ${data.error}`, 5000);
+      showGameMessage(`❌ ${tErr(data.error)}`, 5000);
     };
 
     // Game error
     const handleGameError = (message: string) => {
-      setError(message);
-      showGameMessage(`❌ ${message}`);
+      setError(tErr(message));
+      showGameMessage(`❌ ${tErr(message)}`);
       setIsLoading(false);
     };
 
     // Lobby cancelled (host closed before starting)
     const handleLobbyCancelled = (data: { lobbyId: string }) => {
       if (data.lobbyId === lobbyId) {
-        showGameMessage('El lobby fue cerrado por el creador', 3000);
+        showGameMessage(i18n.t('msg_lobby_closed'), 3000);
         try { localStorage.removeItem('activeLobbyId'); } catch { /* ignore */ }
         navigate('/lobbies');
       }
@@ -422,7 +424,7 @@ export function useGame(lobbyId: string): UseGameReturn {
         // Mesa paga sin empezar: recuperar la entrada on-chain antes de irse
         const onchain = gameState?.type === 'pago' ? gameState.onchain : undefined;
         if (onchain?.chain && onchain.lobbyId && !isGameStarted && session?.walletAddress) {
-          showGameMessage('Recuperando tu entrada on-chain...', 0);
+          showGameMessage(i18n.t('msg_recovering'), 0);
           await leavePaidLobby(onchain.chain as NetworkKey, String(onchain.lobbyId), session.walletAddress as `0x${string}`);
         }
         if (lobbyId) {

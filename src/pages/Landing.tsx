@@ -33,8 +33,8 @@ export default function Landing() {
   return (
     <div className="min-h-[100dvh] page-bg text-white overflow-x-hidden">
       {/* Header */}
-      <header className="max-w-6xl mx-auto flex items-center justify-between gap-3 pl-4 pr-20 sm:pl-6 py-4">
-        <span className="text-2xl sm:text-3xl font-jersey tracking-wide whitespace-nowrap">{t("title")}</span>
+      <header className="max-w-6xl mx-auto flex items-center justify-between gap-3 pl-4 pr-28 sm:pl-6 2xl:pr-6 py-4">
+        <span className="text-2xl sm:text-3xl font-display tracking-wide whitespace-nowrap logo">{t("title")}</span>
         <Link
           to={playTo}
           className="px-4 py-2 rounded-xl bg-white/10 ring-1 ring-white/15 hover:bg-white/20 text-sm font-bold whitespace-nowrap"
@@ -53,7 +53,7 @@ export default function Landing() {
               {playing > 0 && ` · ${t("live_playing", { count: playing })}`}
             </div>
           )}
-          <h1 className="font-jersey text-5xl sm:text-6xl lg:text-7xl leading-[0.95]">
+          <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl leading-[0.95]">
             {t("hero_title")}
             <span className="block bg-gradient-to-r from-yellow-300 via-orange-400 to-red-500 bg-clip-text text-transparent">
               {t("hero_title_accent")}
@@ -63,7 +63,7 @@ export default function Landing() {
           <div className="mt-8 flex flex-wrap gap-3 justify-center lg:justify-start">
             <Link
               to={playTo}
-              className="bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-extrabold px-8 py-4 rounded-2xl text-lg shadow-xl shadow-orange-500/25 hover:brightness-110 active:scale-[0.98] transition"
+              className="btn-shine bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-extrabold px-8 py-4 rounded-2xl text-lg shadow-xl shadow-orange-500/25 hover:brightness-110 active:scale-[0.98] transition"
             >
               {t("play_now")} →
             </Link>
@@ -106,7 +106,7 @@ export default function Landing() {
               {t("prize_pool")} 0.4 ETH
             </span>
           </div>
-          <div className="absolute inset-x-0 bottom-0 flex justify-center">
+          <div className="absolute inset-x-0 bottom-0 flex justify-center animate-float">
             {HAND.map((card, i) => (
               <img
                 key={i}
@@ -122,7 +122,7 @@ export default function Landing() {
 
       {/* Cómo funciona */}
       <section id="como" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 scroll-mt-4">
-        <h2 className="font-jersey text-4xl sm:text-5xl text-center mb-10">{t("how_title")}</h2>
+        <h2 className="font-display text-4xl sm:text-5xl text-center mb-10">{t("how_title")}</h2>
         <ol className="grid md:grid-cols-3 gap-4">
           {STEPS.map((s) => (
             <li key={s.n} className="rounded-3xl bg-white/[0.04] ring-1 ring-white/10 p-6">
@@ -141,7 +141,7 @@ export default function Landing() {
         <div className="rounded-[2rem] bg-gradient-to-br from-yellow-400/10 via-transparent to-transparent ring-1 ring-yellow-300/20 p-6 sm:p-10 grid lg:grid-cols-[1.1fr_1fr] gap-10">
           <div>
             <span className="text-xs font-bold tracking-widest text-yellow-300 uppercase">💰 {t("paid_kicker")}</span>
-            <h2 className="font-jersey text-4xl sm:text-5xl mt-2 mb-4">{t("paid_title")}</h2>
+            <h2 className="font-display text-4xl sm:text-5xl mt-2 mb-4">{t("paid_title")}</h2>
             <p className="text-white/70 leading-relaxed">{t("paid_text")}</p>
             <div className="mt-6">
               <span className="block text-sm text-white/50 mb-2">{t("networks_label")}</span>
@@ -186,10 +186,10 @@ export default function Landing() {
 
       {/* CTA final */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 text-center">
-        <h2 className="font-jersey text-4xl sm:text-5xl mb-6">{t("final_cta")}</h2>
+        <h2 className="font-display text-4xl sm:text-5xl mb-6">{t("final_cta")}</h2>
         <Link
           to={playTo}
-          className="inline-block bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-extrabold px-10 py-4 rounded-2xl text-lg shadow-xl shadow-orange-500/25 hover:brightness-110 transition"
+          className="btn-shine inline-block bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-extrabold px-10 py-4 rounded-2xl text-lg shadow-xl shadow-orange-500/25 hover:brightness-110 transition"
         >
           {t("play_now")} →
         </Link>

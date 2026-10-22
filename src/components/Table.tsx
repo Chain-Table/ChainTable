@@ -50,7 +50,7 @@ export const OpponentSeat: React.FC<{ player: GamePlayer; isTurn: boolean }> = (
         }`}
       >
         <Avatar seed={player.walletAddress || player.username} size={28} isTurn={isTurn} />
-        <span className="text-white text-sm font-mono whitespace-nowrap max-w-28 truncate">{displayName(player.username)}</span>
+        <span className="text-white text-sm font-bold whitespace-nowrap max-w-28 truncate">{displayName(player.username)}</span>
         <span className="min-w-6 h-6 px-1.5 rounded-full bg-white/15 text-white text-xs font-bold flex items-center justify-center">
           {count}
         </span>
@@ -60,7 +60,7 @@ export const OpponentSeat: React.FC<{ player: GamePlayer; isTurn: boolean }> = (
           ¡UNO!
         </span>
       )}
-      {player.isConnected === false && <span className="text-[11px] text-red-300">{t("status_disconnected")}</span>}
+      {player.isConnected === false && <span className="text-xs font-bold text-red-300">{t("status_disconnected")}</span>}
     </div>
   );
 };

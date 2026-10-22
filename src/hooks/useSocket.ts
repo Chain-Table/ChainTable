@@ -305,6 +305,8 @@ export const useSocket = (): UseSocketReturn => {
     socketService.on('connect_error', handleConnectError);
     socketService.on('lobby:list-updated', handleLobbyListUpdate);
     socketService.on('lobby:updated', handleLobbyUpdate);
+    // El server manda la lista al conectar; si el socket ya estaba conectado (navegación interna) hay que pedirla
+    refreshLobbies();
 
     return () => {
       // Limpiar event listeners

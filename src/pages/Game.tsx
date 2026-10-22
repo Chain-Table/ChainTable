@@ -9,6 +9,7 @@ import ColorPicker from "../components/ColorPicker";
 import { Avatar, CenterPiles, Hand, OpponentSeat } from "../components/Table";
 import type { Card as CardType, GameLogEntry, GameState } from "../types/game";
 import { NETWORKS, fmtAmount, type NetworkKey } from "../config/chains";
+import { tErr } from "../i18n";
 
 const PAGE_BG = "min-h-[100dvh] page-bg text-white";
 
@@ -231,7 +232,7 @@ const Game: React.FC = () => {
                 className="animate-card-deal rounded-2xl bg-white/5 ring-1 ring-white/10 p-4 flex flex-col items-center gap-2"
               >
                 <Avatar seed={player.walletAddress || player.username} size={52} />
-                <span className="font-mono text-sm max-w-full truncate">{displayName(player.username)}</span>
+                <span className="font-bold text-sm max-w-full truncate">{displayName(player.username)}</span>
                 <div className="flex gap-1 text-xs">
                   {player.isHost && <span className="px-2 rounded-full bg-yellow-400/20 text-yellow-300">👑 Host</span>}
                   {player.id === session.id && <span className="px-2 rounded-full bg-blue-500/30 text-blue-200">{t("you_label")}</span>}
@@ -312,7 +313,7 @@ const Game: React.FC = () => {
               w ? (
                 <div key={w.username} className="flex flex-col items-center w-28 sm:w-36">
                   <Avatar seed={w.walletAddress || w.username} size={col === 1 ? 72 : 56} />
-                  <span className="font-mono text-sm mt-2 max-w-full truncate">{displayName(w.username)}</span>
+                  <span className="font-bold text-sm mt-2 max-w-full truncate">{displayName(w.username)}</span>
                   {prizes?.[ranks[col] - 1] !== undefined && (
                     <span className="text-yellow-300 font-bold text-sm">{fmt(prizes[ranks[col] - 1], network)}</span>
                   )}
@@ -338,7 +339,7 @@ const Game: React.FC = () => {
           {ranked.length > 3 && (
             <ol start={4} className="mt-6 space-y-1 text-white/60">
               {ranked.slice(3).map((w) => (
-                <li key={w.username} className="font-mono text-sm">
+                <li key={w.username} className="font-semibold text-sm">
                   {w.rank}. {displayName(w.username)}
                 </li>
               ))}
@@ -406,8 +407,8 @@ const Game: React.FC = () => {
   return (
     <div className={`${PAGE_BG} h-[100dvh] flex flex-col overflow-hidden`}>
       {/* Barra superior */}
-      <header className="flex items-center gap-3 pl-3 sm:pl-5 pr-16 sm:pr-20 py-2 bg-black/30 backdrop-blur-sm border-b border-white/10">
-        <h1 className="font-bold truncate">{gameState.name}</h1>
+      <header className="flex items-center gap-3 pl-3 sm:pl-5 pr-28 py-2 bg-black/30 backdrop-blur-sm border-b border-white/10">
+        <h1 className="text-xl tracking-wide truncate">{gameState.name}</h1>
         {isPaid && (
           <span className="shrink-0 px-2.5 py-0.5 rounded-full bg-yellow-400/15 text-yellow-300 text-sm font-bold">
             💰 {fmt(pot, network)}
@@ -491,7 +492,7 @@ const Game: React.FC = () => {
         <div className="flex items-center justify-center gap-3 px-4 pt-2">
           <Avatar seed={session.walletAddress || session.username} size={32} isTurn={isMyTurn} />
           <span
-            className={`font-bold ${isMyTurn ? "text-yellow-300 text-lg" : "text-white/60 text-sm"}`}
+            className={`font-bold ${isMyTurn ? "text-yellow-300 text-lg animate-heartbeat" : "text-white/60 text-sm"}`}
           >
             {isMyTurn ? t("your_turn") : t("turn_of", { player: displayName(turnPlayer?.username) })}
           </span>
@@ -545,7 +546,7 @@ const CancelLobbyButton: React.FC<{
       // En mesas pagas el servidor cancela on-chain y el contrato devuelve las entradas
       await cancelLobby(lobbyId);
     } catch (err) {
-      alert(t("cancel_lobby") + ": " + (err instanceof Error ? err.message : String(err)));
+      alert(t("cancel_lobby") + ": " + tErr(err instanceof Error ? err.message : String(err)));
     } finally {
       setIsCancelling(false);
     }
