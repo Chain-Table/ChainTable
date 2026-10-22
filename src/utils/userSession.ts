@@ -29,6 +29,16 @@ export function createUserSession(username: string, walletAddress = ''): { id: s
   return userSession;
 }
 
+// Secreto de la sesión: viaja en el handshake del socket y prueba que tu id es tuyo
+export function getSessionToken(): string {
+  let t = localStorage.getItem('userToken');
+  if (!t) {
+    t = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem('userToken', t);
+  }
+  return t;
+}
+
 // Vincular (o cambiar) la wallet de la sesión; si el nombre era la wallet vieja, se actualiza también
 export function setSessionWallet(walletAddress: string) {
   const s = getUserSession();

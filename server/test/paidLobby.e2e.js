@@ -89,8 +89,10 @@ function bot(sock, me, lobbyId) {
     const onchainId = table.interface.parseLog(receipt.logs[0]).args.lobbyId.toString();
     await (await table.connect(bob).joinLobby(onchainId, { value: fee })).wait();
 
-    const connect = () => io(`http://127.0.0.1:${SERVER_PORT}`, { transports: ['websocket'] });
-    const [sa, sb, sm] = [connect(), connect(), connect()];
+    const newToken = () => require('crypto').randomBytes(24).toString('hex');
+    const connect = (token = newToken()) => io(`http://127.0.0.1:${SERVER_PORT}`, { transports: ['websocket'], auth: { token } });
+    const bobToken = newToken();
+    const [sa, sb, sm] = [connect(), connect(bobToken), connect()];
 
     // Mesa con datos falsos del cliente: el server usa los del contrato
     sa.emit('lobby:create', {
@@ -116,6 +118,23 @@ function bot(sock, me, lobbyId) {
     sm.emit('lobby:join', { lobbyId, playerId: 'mallory', username: bob.address, walletAddress: bob.address });
     assert.equal((await once(sm, 'lobby:joined')).success, false);
     console.log('✓ una wallet = un asiento');
+
+    // Los ids son públicos: sin el token de la sesión no se puede usar el de otro
+    assert.ok(created.lobby.players.every((p) => p.token === undefined), 'el token no se manda a nadie');
+    sm.emit('lobby:reconnect', { lobbyId, userId: 'bob' });
+    assert.equal((await once(sm, 'game:lobbyInfo')).success, false);
+    sm.emit('lobby:create', { name: 'x', type: 'publico', creatorId: 'alice', creatorUsername: 'Mallory' });
+    assert.equal((await once(sm, 'lobby:created')).success, false);
+    sm.emit('lobby:cancel', { lobbyId, playerId: 'alice' });
+    assert.equal((await once(sm, 'lobby:left')).success, false);
+    // Bob recarga la página (mismo token, socket nuevo): recupera su asiento
+    const sb2 = connect(bobToken);
+    sb2.emit('lobby:reconnect', { lobbyId, userId: 'bob' });
+    assert.ok((await once(sb2, 'game:lobbyInfo')).success);
+    sb2.close();
+    sb.emit('lobby:reconnect', { lobbyId, userId: 'bob' });
+    await once(sb, 'game:lobbyInfo');
+    console.log('✓ sin token no se toma el asiento de otro; con token se reconecta');
 
     // Alias sin wallet: no entra a la paga; con la dirección de otro como alias, tampoco
     sm.emit('lobby:join', { lobbyId, playerId: 'mallory', username: 'Mallory', walletAddress: '' });

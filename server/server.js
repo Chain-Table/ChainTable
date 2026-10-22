@@ -246,7 +246,7 @@ class LobbyManager {
     }
   }
 
-  createLobby(data, creatorId, creatorUsername, walletAddress, socketId) {
+  createLobby(data, creatorId, creatorUsername, walletAddress, socketId, token) {
     const lobbyId = `lobby_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
     const lobby = {
       id: lobbyId,
@@ -255,7 +255,7 @@ class LobbyManager {
       status: 'waiting',
       hostId: creatorId,
       maxPlayers: data.maxPlayers || 8, // mesas pagas: el máximo lo define el contrato
-      players: [{ id: creatorId, username: creatorUsername, walletAddress, socketId, isHost: true, isReady: false, joinedAt: new Date(), isConnected: true }],
+      players: [{ id: creatorId, token, username: creatorUsername, walletAddress, socketId, isHost: true, isReady: false, joinedAt: new Date(), isConnected: true }],
       createdAt: new Date(),
       ...(data.onchain && { onchain: data.onchain }),
       ...(data.token && { token: data.token }),
@@ -269,7 +269,7 @@ class LobbyManager {
     return { success: true, lobby };
   }
 
-  joinLobby(lobbyId, playerId, username, walletAddress, socketId, password) {
+  joinLobby(lobbyId, playerId, username, walletAddress, socketId, password, token) {
     const lobby = this.lobbies.get(lobbyId);
     if (!lobby) return { success: false, error: 'Lobby no encontrado' };
     if (lobby.players.length >= lobby.maxPlayers) return { success: false, error: 'Lobby lleno' };
@@ -279,7 +279,7 @@ class LobbyManager {
     if (lobby.players.some((p) => p.username.toLowerCase() === username.toLowerCase())) {
       return { success: false, error: 'Ese alias ya está en la mesa' };
     }
-    const player = { id: playerId, username, walletAddress, socketId, isHost: false, isReady: false, joinedAt: new Date(), isConnected: true };
+    const player = { id: playerId, token, username, walletAddress, socketId, isHost: false, isReady: false, joinedAt: new Date(), isConnected: true };
     lobby.players.push(player);
     this.playerLobbyMap.set(playerId, lobbyId);
     return { success: true, lobby };
@@ -555,13 +555,23 @@ function publicGame(game) {
   return {
     ...rest,
     drawPileCount: drawPile.length,
-    players: game.players.map(({ hand, ...p }) => ({ ...p, cardCount: hand ? hand.length : p.cardCount })),
+    players: game.players.map(({ hand, token, ...p }) => ({ ...p, cardCount: hand ? hand.length : p.cardCount })),
   };
 }
 
 function publicLobby(lobby) {
   const { password, ...rest } = lobby;
-  return { ...rest, hasPassword: !!password };
+  return { ...rest, players: lobby.players.map(({ token, ...p }) => p), hasPassword: !!password };
+}
+const publicResult = (r) => (r.lobby ? { ...r, lobby: publicLobby(r.lobby) } : r);
+
+// El id de jugador es público (va en la info de la mesa); el token del handshake es secreto
+// y prueba que ese id es tuyo. Sin esto cualquiera podía jugar o cancelar por otro.
+const validToken = (t) => typeof t === 'string' && t.length >= 32;
+function ownsId(id, token) {
+  const lobby = lobbyManager.lobbies.get(lobbyManager.playerLobbyMap.get(id));
+  const p = lobby?.players.find((x) => x.id === id);
+  return !p || p.token === token;
 }
 
 const sameAddr = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -618,6 +628,7 @@ async function settlePaidLobby(lobbyId, lobby, game) {
 io.on('connection', (socket) => {
   console.log(`👤 Usuario conectado: ${socket.id}`);
   let currentUserId = null;
+  const token = socket.handshake.auth?.token;
 
   // Enviar lista de lobbies al conectar
   socket.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
@@ -626,11 +637,11 @@ io.on('connection', (socket) => {
   // Crear lobby
   socket.on('lobby:create', async (data) => {
     console.log('🎮 Creando lobby:', data.name, data.type);
-    currentUserId = data.creatorId;
     let username, walletAddress;
     const lobbyData = { name: data.name, type: data.type, password: data.password };
 
     try {
+      if (!validToken(token) || !ownsId(data.creatorId, token)) throw new Error('Sesión inválida, recargá la página');
       ({ username, walletAddress } = identity(data.creatorUsername, data.walletAddress));
       // Mesa paga: la verdad es el contrato, no lo que manda el cliente
       if (data.type === 'pago') {
@@ -662,10 +673,11 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const result = lobbyManager.createLobby(lobbyData, data.creatorId, username, walletAddress, socket.id);
+    const result = publicResult(lobbyManager.createLobby(lobbyData, data.creatorId, username, walletAddress, socket.id, token));
     socket.emit('lobby:created', result);
     socket.emit('lobbyCreated', result);
     if (result.success) {
+      currentUserId = data.creatorId;
       socket.join(result.lobby.id);
       io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
       io.emit('lobbiesList', lobbyManager.getActiveLobbiesInfo());
@@ -677,11 +689,11 @@ io.on('connection', (socket) => {
   // Unirse a lobby
   socket.on('lobby:join', async (data) => {
     console.log('👋 Uniéndose a lobby:', data);
-    currentUserId = data.playerId;
 
     let result, username, walletAddress;
     const target = lobbyManager.lobbies.get(data.lobbyId);
     try {
+      if (!validToken(token) || !ownsId(data.playerId, token)) throw new Error('Sesión inválida, recargá la página');
       ({ username, walletAddress } = identity(data.username, data.walletAddress));
       // Pagó si el contrato lo tiene como jugador; una wallet = un asiento
       if (target?.type === 'pago') {
@@ -706,12 +718,15 @@ io.on('connection', (socket) => {
       username,
       walletAddress,
       socket.id,
-      data.password
+      data.password,
+      token
     );
-    
+    result = publicResult(result);
+
     socket.emit('lobby:joined', result);
     socket.emit('lobbyJoined', result);
     if (result.success) {
+      currentUserId = data.playerId;
       socket.join(data.lobbyId);
       io.to(data.lobbyId).emit('lobby:updated', { lobbyId: data.lobbyId });
       io.to(data.lobbyId).emit('lobbyUpdate', { lobbyId: data.lobbyId });
@@ -723,7 +738,7 @@ io.on('connection', (socket) => {
   // Salir de lobby
   socket.on('lobby:leave', (data) => {
     console.log('🚪 Saliendo de lobby:', data);
-    const result = lobbyManager.leaveLobby(data.lobbyId, data.playerId);
+    const result = currentUserId ? lobbyManager.leaveLobby(data.lobbyId, currentUserId) : { success: false, error: 'Sesión inválida' };
     socket.emit('lobby:left', result);
     socket.emit('lobbyLeft', result);
     if (result.success) {
@@ -892,6 +907,8 @@ io.on('connection', (socket) => {
       console.log(`⏳ Marcando usuario ${currentUserId} como desconectado en lobby ${lobbyId}`);
       lobbyManager.handleDisconnectGrace(lobbyId, currentUserId, () => {
         // Before expelling, ensure lobby still exists (it might have been cancelled)
+        // En partida el asiento se guarda: puede volver cuando quiera
+        if (lobbyManager.lobbies.get(lobbyId)?.status !== 'waiting') return;
         if (!lobbyManager.lobbies.has(lobbyId)) {
           console.log(`⚠️ Lobby ${lobbyId} not present at expel time, skipping expel for ${currentUserId}`);
           return;
@@ -911,7 +928,8 @@ io.on('connection', (socket) => {
   // Cancel lobby explicitly by host before starting
   socket.on('lobby:cancel', async (data) => {
     console.log('🛑 Lobby cancel requested:', data);
-    const { lobbyId, playerId } = data;
+    const { lobbyId } = data;
+    const playerId = currentUserId;
     const lobby = lobbyManager.lobbies.get(lobbyId);
     if (!lobby) { socket.emit('lobby:left', { success: false, lobbyId }); return; }
     if (lobby.hostId !== playerId) { socket.emit('lobby:left', { success: false, lobbyId }); return; }
@@ -955,6 +973,10 @@ io.on('connection', (socket) => {
 
   socket.on('lobby:reconnect', ({ lobbyId, userId }) => {
     console.log(`🔄 Usuario ${userId} reconectando a lobby ${lobbyId} con socket ${socket.id}`);
+    const seat = lobbyManager.lobbies.get(lobbyId)?.players.find((p) => p.id === userId);
+    if (!seat || !validToken(token) || seat.token !== token) {
+      return socket.emit('game:lobbyInfo', { success: false, error: 'Ya no estás en esta mesa' });
+    }
     currentUserId = userId;
     lobbyManager.handleReconnect(lobbyId, userId, socket.id);
     socket.join(lobbyId);

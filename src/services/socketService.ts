@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import type { LobbyType, CreateLobbyFormData, Lobby } from '../types/lobby';
 import type { GameState, Card, GameUpdateData, WildColor } from '../types/game';
+import { getSessionToken } from '../utils/userSession';
 
 export interface SocketEvents {
   // Reconexión de lobby
@@ -99,8 +100,8 @@ class SocketService {
         transports: ['websocket', 'polling'],
         autoConnect: true,
         reconnection: true,
-        reconnectionAttempts: 5,
         reconnectionDelay: 1000,
+        auth: { token: getSessionToken() },
       });
 
       this.socket.on('connect', () => {
