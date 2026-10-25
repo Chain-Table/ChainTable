@@ -106,13 +106,14 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
       </span>
     );
 
+  // Tanteador en fósforos: cuadraditos de 5 (cuatro lados y la diagonal); a 30, malas | buenas
   const score = (tm: number) => (
-    <div className={`px-3 py-1 rounded-xl ring-1 text-center leading-tight ${TEAM_STYLE[tm === us ? 0 : 1]}`}>
-      <div className="text-[10px] uppercase tracking-wider opacity-80">{t(tm === us ? "truco_us" : "truco_them")}</div>
-      <div className="font-display text-2xl">{st.scores[tm]}</div>
-      {st.target === 30 && (
-        <div className="text-[10px] opacity-70">{t(st.scores[tm] < 15 ? "truco_malas" : "truco_buenas")}</div>
-      )}
+    <div className="flex items-center gap-2" title={`${st.scores[tm]}${st.target === 30 ? ` (${t(st.scores[tm] < 15 ? "truco_malas" : "truco_buenas")})` : ""}`}>
+      <span className={`hidden sm:block w-[4.5rem] text-right text-[11px] font-bold uppercase tracking-wider ${tm === us ? "text-sky-200" : "text-rose-200"}`}>
+        {t(tm === us ? "truco_us" : "truco_them")}
+      </span>
+      <Fosforos points={st.scores[tm]} target={st.target} />
+      <span className={`w-6 font-display text-lg leading-none ${tm === us ? "text-sky-200" : "text-rose-200"}`}>{st.scores[tm]}</span>
     </div>
   );
 
@@ -130,8 +131,6 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          {score(us)}
-          {score(1 - us)}
           <button
             onClick={onLeave}
             aria-label={t("game_leave")}
@@ -142,8 +141,15 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
         </div>
       </header>
 
-      <main className="relative flex-1 min-h-0 flex items-center justify-center p-3 sm:p-6">
-        <div className="felt relative w-full max-w-5xl h-full max-h-[620px] rounded-[48%/42%]">
+      <main className="relative flex-1 min-h-0 flex flex-col sm:flex-row items-center justify-center gap-2 p-3 sm:p-6">
+        {/* Tanteador: en el celu arriba de la mesa; en pantallas grandes, en la esquina libre */}
+        <div className="shrink-0 sm:absolute z-10 sm:top-3 sm:left-3 flex flex-col gap-1.5 px-2.5 py-2 rounded-2xl ring-2 ring-amber-950/80 shadow-[inset_0_1px_0_rgba(255,255,255,.25),0_8px_20px_rgba(0,0,0,.45)]"
+          style={{ backgroundImage: "repeating-linear-gradient(90deg, transparent 0 38px, rgba(0,0,0,.22) 38px 40px), linear-gradient(#b45309, #451a03)" }}
+        >
+          {score(us)}
+          {score(1 - us)}
+        </div>
+        <div className="felt relative w-full max-w-5xl flex-1 sm:flex-none min-h-0 sm:h-full max-h-[620px] rounded-[48%/42%]">
           {/* Los demás jugadores alrededor */}
           {st.names.map((_, s) => {
             if (s === me) return null;
@@ -306,6 +312,50 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
         </div>
       )}
     </div>
+  );
+};
+
+// Cada fósforo: palito y cabeza roja. Orden de un cuadradito: arriba, derecha, abajo, izquierda, diagonal
+const PALITOS: [number, number, number, number][] = [
+  [6, 5, 30, 5],
+  [31, 6, 31, 30],
+  [30, 31, 6, 31],
+  [5, 30, 5, 6],
+  [10, 26, 26, 10],
+];
+const Fosforo: React.FC<{ p: [number, number, number, number] }> = ({ p: [x1, y1, x2, y2] }) => {
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  const [ux, uy] = [(x2 - x1) / len, (y2 - y1) / len];
+  return (
+    <g className="animate-fosforo">
+      <line x1={x1 + 0.6} y1={y1 + 0.8} x2={x2 + 0.6} y2={y2 + 0.8} stroke="rgba(0,0,0,.35)" strokeWidth="5" strokeLinecap="round" />
+      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#f3e2c0" strokeWidth="4.2" strokeLinecap="round" />
+      <line x1={x2 - 3.2 * ux} y1={y2 - 3.2 * uy} x2={x2} y2={y2} stroke="#e4505f" strokeWidth="6.4" strokeLinecap="round" />
+    </g>
+  );
+};
+const Fosforos: React.FC<{ points: number; target: number }> = ({ points, target }) => {
+  const groups = target / 5;
+  const W = 36;
+  const GAP = 6;
+  const SEP = target === 30 ? 8 : 0; // raya entre malas y buenas
+  const width = groups * W + (groups - 1) * GAP + SEP;
+  return (
+    <svg viewBox={`-1 -1 ${width + 2} ${W + 2}`} className="h-5 sm:h-7 w-auto" aria-hidden>
+      {SEP > 0 && <line x1={3 * W + 2.5 * GAP + SEP / 2} y1="0" x2={3 * W + 2.5 * GAP + SEP / 2} y2={W} stroke="rgba(255,255,255,.35)" strokeWidth="2" />}
+      {Array.from({ length: groups }).map((_, g) => {
+        const x = g * (W + GAP) + (g >= 3 ? SEP : 0);
+        const n = Math.max(0, Math.min(5, points - g * 5));
+        return (
+          <g key={g} transform={`translate(${x} 0)`}>
+            <rect x="1" y="1" width={W - 2} height={W - 2} rx="4" fill="rgba(0,0,0,.2)" />
+            {PALITOS.slice(0, n).map((p, i) => (
+              <Fosforo key={i} p={p} />
+            ))}
+          </g>
+        );
+      })}
+    </svg>
   );
 };
 

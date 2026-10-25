@@ -248,6 +248,9 @@ test('cada uno ve su mano y la del compañero, nunca la del rival', () => {
   assert.deepEqual(v.hand, ['3-espada', '4-oro', '5-oro']);
   assert.deepEqual(Object.keys(v.partners), ['2']);
   assert.ok(!JSON.stringify(v).includes('4-basto'), 'no filtra cartas del rival');
+  const uno = T.view(partida(2, ['3e 4o 5o', '4b 5b 6b']), 0);
+  assert.deepEqual(uno.partners, {}, '1v1: no hay compañero');
+  assert.ok(!JSON.stringify(uno).includes('-basto'), '1v1: no se ve la mano del rival');
   const sin = partida(4, ['3e 4o 5o', '4b 5b 6b', '3o 4c 5c', '6e 6o 6c'], { verCompanero: false });
   assert.deepEqual(T.view(sin, 0).partners, {});
 });

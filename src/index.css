@@ -362,3 +362,14 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .animate-bubble { animation-name: none !important; transform: translate(-50%, 0); }
 }
+
+/* Fósforo que se suma al tanteador */
+@keyframes fosforo {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-fosforo {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fosforo 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.3) backwards;
+}
