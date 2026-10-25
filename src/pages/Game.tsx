@@ -267,6 +267,15 @@ const Game: React.FC = () => {
     return (
       <div className={`${PAGE_BG} px-4 py-10`}>
         <div className="max-w-3xl mx-auto">
+          <button
+            onClick={leaveGame}
+            className="-mt-4 mb-4 inline-flex items-center gap-1.5 rounded-full bg-white/5 ring-1 ring-white/10 hover:bg-white/15 pl-2.5 pr-4 py-1.5 text-sm font-semibold"
+          >
+            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+            {t("tables_back")}
+          </button>
           <div className="text-center mb-8">
             <p className="text-emerald-300/80 text-sm uppercase tracking-widest">{t("waiting_players")}</p>
             <h1 className="text-4xl sm:text-5xl font-extrabold mt-1">{gameState.name}</h1>

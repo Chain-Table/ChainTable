@@ -160,7 +160,17 @@ const Lobbies: React.FC = () => {
       <header className="sticky top-0 z-30 bg-black/40 backdrop-blur-md border-b border-white/10">
         <div className="max-w-6xl mx-auto flex items-center gap-3 pl-4 pr-28 sm:pl-6 2xl:pr-6 py-3">
           <div className="flex items-center gap-2 mr-auto">
-            <span className="text-xl sm:text-3xl font-display tracking-wide whitespace-nowrap logo">{t("title")}</span>
+            <button
+              onClick={() => navigate("/")}
+              title={t("back_home")}
+              aria-label={t("back_home")}
+              className="w-9 h-9 shrink-0 rounded-full bg-white/5 ring-1 ring-white/10 hover:bg-white/15 flex items-center justify-center"
+            >
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+            <span className="hidden sm:inline text-3xl font-display tracking-wide whitespace-nowrap logo">{t("title")}</span>
             <span
               title={isConnected ? t("status_connected") : t("status_disconnected")}
               className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-400" : "bg-red-400 animate-pulse"}`}
