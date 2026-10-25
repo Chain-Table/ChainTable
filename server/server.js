@@ -12,6 +12,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '.env'), override: fals
 // Luego cargar contractService (que usa process.env)
 const contractService = require('./contractService');
 const { STATE } = contractService;
+const Truco = require('../truco/engine');
 
 const app = express();
 app.disable('x-powered-by');
@@ -218,6 +219,7 @@ class LobbyManager {
   constructor() {
     this.lobbies = new Map();
     this.games = new Map();
+    this.trucoGames = new Map(); // aparte: los handlers del UNO no deben encontrar una partida de truco
     this.playerLobbyMap = new Map();
     this.disconnectTimeouts = new Map();
   }
@@ -256,6 +258,7 @@ class LobbyManager {
       id: lobbyId,
       name: data.name,
       type: data.type,
+      game: data.game || 'uno',
       status: 'waiting',
       hostId: creatorId,
       maxPlayers: data.maxPlayers || 8, // mesas pagas: el máximo lo define el contrato
@@ -266,7 +269,8 @@ class LobbyManager {
       ...(data.mode && { mode: data.mode }),
       ...(data.network && { network: data.network }),
       ...(data.password && { password: data.password }),
-      ...(data.entryCost && { entryCost: data.entryCost })
+      ...(data.entryCost && { entryCost: data.entryCost }),
+      ...(data.target && { target: data.target })
     };
     this.lobbies.set(lobbyId, lobby);
     this.playerLobbyMap.set(creatorId, lobbyId);
@@ -298,6 +302,7 @@ class LobbyManager {
     if (lobby.players.length === 0) {
       this.lobbies.delete(lobbyId);
       this.games.delete(lobbyId);
+      this.trucoGames.delete(lobbyId);
     } else {
       const hasHost = lobby.players.some(p => p.isHost);
       if (!hasHost && lobby.players.length > 0) {
@@ -317,6 +322,8 @@ class LobbyManager {
           id: lobby.id, 
           name: lobby.name, 
           type: lobby.type, 
+          game: lobby.game,
+          ...(lobby.target && { target: lobby.target }),
           currentPlayers: lobby.players.length, 
           maxPlayers: lobby.maxPlayers,
           ...(lobby.mode && { mode: lobby.mode }), // Agregar modo BEAST/CLASSIC
@@ -328,6 +335,8 @@ class LobbyManager {
           id: lobby.id, 
           name: lobby.name, 
           type: lobby.type, 
+          game: lobby.game,
+          ...(lobby.target && { target: lobby.target }),
           players: lobby.players.length,
           ...(lobby.mode && { mode: lobby.mode }),
           ...(lobby.onchain && { onchain: lobby.onchain }),
@@ -343,7 +352,21 @@ class LobbyManager {
     if (!lobby) return { success: false, error: 'Lobby no encontrado' };
     const player = lobby.players.find(p => p.id === playerId);
     if (!player || !player.isHost) return { success: false, error: 'Solo el host puede iniciar la partida' };
+    // Un segundo game:start no reinicia la partida (ni deja un reloj viejo corriendo)
+    if (lobby.status !== 'waiting') return { success: false, error: 'La partida ya empezó' };
     if (lobby.players.length < 2) return { success: false, error: 'Se necesitan al menos 2 jugadores' };
+    // Truco: mesa completa; equipos por asiento alternado según el orden de llegada
+    // ponytail: sin elegir compañero, agregar un "cambiar de asiento" en la sala si se pide
+    if (lobby.game === 'truco') {
+      if (lobby.players.length !== lobby.maxPlayers) return { success: false, error: `El truco se juega de a ${lobby.maxPlayers}: faltan jugadores` };
+      const truco = {
+        seats: lobby.players.map(({ id, username }) => ({ id, username })),
+        match: Truco.createMatch({ players: lobby.maxPlayers, target: lobby.target }),
+      };
+      this.trucoGames.set(lobbyId, truco);
+      lobby.status = 'in_game';
+      return { success: true, truco };
+    }
     
     // CRITICAL: Pasar información del lobby al juego para auto-distribución de premios
     const lobbyData = {
@@ -656,8 +679,48 @@ function finishLobby(lobbyId) {
   setTimeout(() => {
     lobbyManager.lobbies.delete(lobbyId);
     lobbyManager.games.delete(lobbyId);
+    lobbyManager.trucoGames.delete(lobbyId);
   }, FINISHED_TTL_MS).unref();
   io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
+}
+
+// ===== Truco: las reglas están en truco/engine; acá solo sockets y reloj =====
+const TRUCO_MS = Number(process.env.TRUCO_TURN_MS) || 30000;
+const TRUCO_PAUSE_MS = Number(process.env.TRUCO_PAUSE_MS) || 3000; // para ver cómo terminó la mano
+
+// Cada asiento recibe solo su vista: su mano, la del compañero y nada de los rivales
+function trucoEmit(lobbyId, g, events = []) {
+  const lobby = lobbyManager.lobbies.get(lobbyId);
+  const names = g.seats.map((s) => s.username);
+  const msLeft = g.deadline ? Math.max(0, g.deadline - Date.now()) : null;
+  g.seats.forEach(({ id }, seat) => {
+    const sid = lobby?.players.find((p) => p.id === id)?.socketId;
+    if (sid) io.to(sid).emit('truco:state', { lobbyId, seat, names, events, turnMs: TRUCO_MS, msLeft, ...Truco.view(g.match, seat) });
+  });
+}
+
+// Después de cada cambio: fin de partida, pausa entre manos o reloj de la próxima acción
+function trucoStep(lobbyId, g, events = []) {
+  clearTimeout(g.t);
+  g.deadline = null;
+  const m = g.match;
+  const alive = (fn) => () => {
+    // Mesa abandonada: no seguir jugando solos
+    if (!lobbyManager.lobbies.has(lobbyId)) return lobbyManager.trucoGames.delete(lobbyId);
+    fn();
+  };
+  if (m.over) {
+    trucoEmit(lobbyId, g, events);
+    return finishLobby(lobbyId);
+  }
+  if (m.hand.phase === 'OVER') {
+    g.t = setTimeout(alive(() => { Truco.nextHand(m); trucoStep(lobbyId, g, [{ type: 'nuevaMano' }]); }), TRUCO_PAUSE_MS);
+  } else {
+    g.deadline = Date.now() + TRUCO_MS;
+    // Sin respuesta: si tenía que jugar se va al mazo; si tenía que contestar, no quiero
+    g.t = setTimeout(alive(() => trucoStep(lobbyId, g, Truco.timeout(m).events.map((e) => ({ ...e, auto: 'timeout' })))), TRUCO_MS);
+  }
+  trucoEmit(lobbyId, g, events);
 }
 
 const MAX_LOBBIES = Number(process.env.MAX_LOBBIES) || 200;
@@ -749,6 +812,15 @@ io.on('connection', (socket) => {
       const name = cleanText(data.name, 40);
       if (!name) throw new Error('Ponele un nombre a la mesa');
       lobbyData = { name, type: data.type, ...(data.type === 'privado' && { password: String(data.password ?? '').slice(0, 64) }) };
+      if (data.game === 'truco') {
+        // ponytail: sin mesas pagas hasta que el contrato reparta por equipo y haya consulta legal
+        if (data.type === 'pago') throw new Error('El truco todavía no tiene mesas pagas');
+        const players = Number(data.players);
+        const target = Number(data.target);
+        if (![2, 4, 6].includes(players)) throw new Error('El truco se juega de a 2, 4 o 6');
+        if (![15, 30].includes(target)) throw new Error('El truco se juega a 15 o a 30');
+        Object.assign(lobbyData, { game: 'truco', maxPlayers: players, target });
+      }
       ({ username, walletAddress } = identity(data.creatorUsername, data.walletAddress));
       // Mesa paga: la verdad es el contrato, no lo que manda el cliente
       if (data.type === 'pago') {
@@ -891,6 +963,11 @@ io.on('connection', (socket) => {
       lobby.status = 'waiting'; // startGame lo pasa a in_game
     }
     const result = lobbyManager.startGame(data.lobbyId, currentUserId);
+    if (result.truco) {
+      trucoStep(data.lobbyId, result.truco);
+      io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
+      return;
+    }
     if (result.success) {
       const game = result.game;
       const firstCard = game.getCurrentCard();
@@ -963,6 +1040,17 @@ io.on('connection', (socket) => {
   turnAction('game:passTurn', (d) => lobbyManager.passTurn(d.lobbyId, currentUserId), 'pass');
   turnAction('game:chooseColor', (d) => lobbyManager.chooseColor(d.lobbyId, currentUserId, d.color), 'color_chosen');
 
+  // Toda jugada del truco entra por acá; el motor valida contra las jugadas legales del asiento
+  socket.on('truco:act', (data) => {
+    const g = lobbyManager.trucoGames.get(data?.lobbyId);
+    const seat = g ? g.seats.findIndex((s) => s.id === currentUserId) : -1;
+    if (seat < 0) return socket.emit('game:error', 'No estás jugando en esta mesa');
+    const a = data.action || {};
+    const r = Truco.act(g.match, seat, { type: a.type, call: a.call, card: a.card });
+    if (!r.ok) return socket.emit('game:error', r.error);
+    trucoStep(data.lobbyId, g, r.events);
+  });
+
   socket.on('game:getLobbyInfo', (data) => {
     const lobby = lobbyManager.lobbies.get(data.lobbyId);
     if (lobby) {
@@ -972,6 +1060,8 @@ io.on('connection', (socket) => {
       }
 
       socket.emit('game:lobbyInfo', { success: true, lobby: publicLobby(lobby) });
+      const truco = lobbyManager.trucoGames.get(data.lobbyId);
+      if (truco) trucoEmit(data.lobbyId, truco);
       const game = lobbyManager.getGame(data.lobbyId);
       if (game) {
         socket.emit('game:gameInfo', { success: true, game: publicGame(game) });
@@ -1061,6 +1151,8 @@ io.on('connection', (socket) => {
     if (lobby) {
       socket.emit('game:lobbyInfo', { success: true, lobby: publicLobby(lobby) });
     }
+    const truco = lobbyManager.trucoGames.get(lobbyId);
+    if (truco) trucoEmit(lobbyId, truco);
 
     const game = lobbyManager.getGame(lobbyId);
     if (game) {

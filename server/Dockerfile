@@ -6,6 +6,8 @@ COPY server/package*.json ./
 RUN npm ci --omit=dev
 
 COPY server ./
+# El motor del truco vive fuera de server/; server.js lo carga con require('../truco/engine')
+COPY truco/engine /app/truco/engine
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
