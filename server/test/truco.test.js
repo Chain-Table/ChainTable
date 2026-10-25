@@ -111,6 +111,21 @@ async function mesa(n, target = 15) {
     console.log(`✓ partida completa ${fin.scores.join('-')}`);
 
     [a, b].forEach((s) => s.close());
+
+    // Levantarse en plena partida la pierde
+    {
+      const { socks: [c, d], lobby: l2 } = await mesa(2);
+      let last;
+      c.on('truco:state', (st) => (last = st));
+      c.emit('game:start', { lobbyId: l2.id });
+      await sleep(300);
+      d.emit('lobby:leave', { lobbyId: l2.id });
+      await sleep(300);
+      assert.ok(last.over && last.winner === last.seat % 2, 'gana el que se quedó');
+      assert.ok(last.events.some((e) => e.type === 'abandono'));
+      [c, d].forEach((s) => s.close());
+      console.log('✓ el que se va pierde');
+    }
     console.log('TRUCO OK');
   } finally {
     server?.kill();

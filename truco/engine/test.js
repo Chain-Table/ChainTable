@@ -252,6 +252,13 @@ test('cada uno ve su mano y la del compañero, nunca la del rival', () => {
   assert.deepEqual(T.view(sin, 0).partners, {});
 });
 
+test('el que se levanta pierde la partida para su equipo', () => {
+  const m = partida(4, ['3e 4o 5o', '4b 5b 6b', '3o 4c 5c', '6e 6o 6c']);
+  assert.deepEqual(T.abandon(m, 2).events.at(-1), { type: 'fin', winner: 1 });
+  assert.ok(m.over && T.view(m, 1).legal.length === 0);
+  assert.equal(T.abandon(m, 1).ok, false);
+});
+
 test('partida aleatoria completa sin errores', () => {
   for (const players of [2, 4, 6]) {
     const m = T.createMatch({ players, target: 30 });

@@ -274,7 +274,9 @@ export const useSocket = (): UseSocketReturn => {
           maxPlayers: lobby.maxPlayers,
           ...(lobby.mode && { mode: lobby.mode }),
           ...(lobby.onchain && { onchain: lobby.onchain }),
-          ...(lobby.entryCost && { entryCost: lobby.entryCost })
+          ...(lobby.entryCost && { entryCost: lobby.entryCost }),
+          ...(lobby.game && { game: lobby.game }),
+          ...(lobby.target && { target: lobby.target })
         })),
         ...data.inGame.map((lobby: any) => ({
           id: lobby.id,
@@ -285,7 +287,9 @@ export const useSocket = (): UseSocketReturn => {
           maxPlayers: lobby.players,
           ...(lobby.mode && { mode: lobby.mode }),
           ...(lobby.onchain && { onchain: lobby.onchain }),
-          ...(lobby.entryCost && { entryCost: lobby.entryCost })
+          ...(lobby.entryCost && { entryCost: lobby.entryCost }),
+          ...(lobby.game && { game: lobby.game }),
+          ...(lobby.target && { target: lobby.target })
         }))
       ];
 

@@ -916,7 +916,11 @@ io.on('connection', (socket) => {
 
   // Salir de lobby
   socket.on('lobby:leave', (data) => {
+    const truco = lobbyManager.trucoGames.get(data?.lobbyId);
+    const seat = truco ? truco.seats.findIndex((s) => s.id === currentUserId) : -1;
     const result = currentUserId ? lobbyManager.leaveLobby(data.lobbyId, currentUserId) : { success: false, error: 'Sesión inválida' };
+    // Truco: irse en plena partida la pierde (si no, los demás esperan el reloj mano tras mano)
+    if (result.success && seat >= 0 && !truco.match.over) trucoStep(data.lobbyId, truco, Truco.abandon(truco.match, seat).events);
     socket.emit('lobby:left', result);
     socket.emit('lobbyLeft', result);
     if (result.success) {

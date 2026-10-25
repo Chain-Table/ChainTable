@@ -1,5 +1,6 @@
 // Tipos base para el sistema de lobbies
 export type LobbyType = 'publico' | 'privado' | 'pago';
+export type GameKind = 'uno' | 'truco';
 export type LobbyStatus = 'waiting' | 'starting' | 'in-progress' | 'finished' | 'cancelled';
 
 // Redes donde se juega con plata (ver src/config/chains.ts)
@@ -27,6 +28,9 @@ export interface CreateLobbyFormData {
   mode?: 'BEAST' | 'CLASSIC';
   maxPlayers?: number;
   description?: string;
+  game?: GameKind;
+  players?: 2 | 4 | 6; // truco: 1v1, 2v2 o 3v3
+  target?: 15 | 30; // truco: a cuántos puntos
 }
 
 // Mesa tal como llega en la lista pública (lobby:list-updated)
@@ -40,6 +44,8 @@ export interface LobbySummary {
   mode?: 'BEAST' | 'CLASSIC';
   entryCost?: string; // wei
   onchain?: { chain: SupportedNetwork; lobbyId: string; entryFee: string };
+  game?: GameKind;
+  target?: 15 | 30;
 }
 
 // Configuración de pago del lobby

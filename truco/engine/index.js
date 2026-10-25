@@ -283,6 +283,15 @@ function timeout(m) {
   return act(m, h.order.find((s) => equipo(s) === respondiendo(h)), { type: 'noQuiero' });
 }
 
+// Alguien se levanta de la mesa en plena partida: pierde su equipo
+function abandon(m, seat) {
+  if (m.over) return { ok: false, error: 'La partida ya terminó' };
+  m.over = true;
+  m.winner = 1 - equipo(seat);
+  m.hand.phase = 'OVER';
+  return { ok: true, events: [{ type: 'abandono', seat }, { type: 'fin', winner: m.winner }] };
+}
+
 // Lo que ve un asiento: su mano, la de sus compañeros (salvo en pica-pica) y nada de los rivales
 function view(m, seat) {
   const h = m.hand;
@@ -311,7 +320,7 @@ function view(m, seat) {
 }
 
 module.exports = {
-  createMatch, act, timeout, nextHand, view, legalActions,
+  createMatch, act, timeout, nextHand, abandon, view, legalActions,
   // reglas sueltas, para tests y para la UI
   carta, fuerza, envidoDe, puntosEnvido, ganadorMano, falta, PALOS, NUMS,
 };
