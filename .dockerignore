@@ -1,6 +1,7 @@
-# El build solo copia server/: que no entren node_modules del host, secretos ni tests
+# El build solo copia server/ y truco/engine: que no entren node_modules del host, secretos ni tests
 **/node_modules
 **/.env
 **/.env.*
 server/test
 .git
+truco/engine/test.js

@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "test:turns": "node test/turns.test.js",
     "test:security": "node test/security.test.js",
-    "test:e2e": "node test/paidLobby.e2e.js"
+    "test:e2e": "node test/paidLobby.e2e.js",
+    "test:truco": "node test/truco.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

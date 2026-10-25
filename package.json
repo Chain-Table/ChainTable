@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "forge test",
+    "test:truco": "node truco/engine/test.js",
     "start": "npm --prefix server start"
   },
   "dependencies": {
