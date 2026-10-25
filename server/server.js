@@ -681,7 +681,7 @@ function finishLobby(lobbyId) {
     lobbyManager.games.delete(lobbyId);
     lobbyManager.trucoGames.delete(lobbyId);
   }, FINISHED_TTL_MS).unref();
-  io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
+  broadcastList();
 }
 
 // ===== Truco: las reglas están en truco/engine; acá solo sockets y reloj =====
@@ -721,6 +721,17 @@ function trucoStep(lobbyId, g, events = []) {
     g.t = setTimeout(alive(() => trucoStep(lobbyId, g, Truco.timeout(m).events.map((e) => ({ ...e, auto: 'timeout' })))), TRUCO_MS);
   }
   trucoEmit(lobbyId, g, events);
+}
+
+// La lista de mesas va solo a quien la está mirando (sin asiento) y agrupada: antes iba entera a
+// todos en cada cambio y con 200 mesas eran ~24 MB por cambio
+const LISTA = 'lista';
+let listTimer = null;
+function broadcastList() {
+  listTimer ??= setTimeout(() => {
+    listTimer = null;
+    io.to(LISTA).emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
+  }, 500);
 }
 
 const MAX_LOBBIES = Number(process.env.MAX_LOBBIES) || 200;
@@ -795,8 +806,8 @@ io.on('connection', (socket) => {
   });
 
   // Enviar lista de lobbies al conectar
+  socket.join(LISTA);
   socket.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
-  socket.emit('lobbiesList', lobbyManager.getActiveLobbiesInfo());
 
   // Crear lobby
   socket.on('lobby:create', async (data) => {
@@ -858,8 +869,8 @@ io.on('connection', (socket) => {
     if (result.success) {
       currentUserId = data.creatorId;
       socket.join(result.lobby.id);
-      io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
-      io.emit('lobbiesList', lobbyManager.getActiveLobbiesInfo());
+      socket.leave(LISTA);
+      broadcastList();
       io.to(result.lobby.id).emit('lobby:updated', { lobbyId: result.lobby.id });
       io.to(result.lobby.id).emit('lobbyUpdate', { lobbyId: result.lobby.id });
     }
@@ -907,10 +918,10 @@ io.on('connection', (socket) => {
     if (result.success) {
       currentUserId = data.playerId;
       socket.join(data.lobbyId);
+      socket.leave(LISTA);
       io.to(data.lobbyId).emit('lobby:updated', { lobbyId: data.lobbyId });
       io.to(data.lobbyId).emit('lobbyUpdate', { lobbyId: data.lobbyId });
-      io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
-      io.emit('lobbiesList', lobbyManager.getActiveLobbiesInfo());
+      broadcastList();
     }
   });
 
@@ -927,15 +938,14 @@ io.on('connection', (socket) => {
       socket.leave(data.lobbyId);
       io.to(data.lobbyId).emit('lobby:updated', { lobbyId: data.lobbyId });
       io.to(data.lobbyId).emit('lobbyUpdate', { lobbyId: data.lobbyId });
-      io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
-      io.emit('lobbiesList', lobbyManager.getActiveLobbiesInfo());
+      broadcastList();
     }
   });
 
   // Solicitar lista
   socket.on('lobby:list', () => {
+    if (!lobbyManager.playerLobbyMap.has(currentUserId)) socket.join(LISTA);
     socket.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
-    socket.emit('lobbiesList', lobbyManager.getActiveLobbiesInfo());
   });
 
   // Ready (placeholder)
@@ -969,7 +979,7 @@ io.on('connection', (socket) => {
     const result = lobbyManager.startGame(data.lobbyId, currentUserId);
     if (result.truco) {
       trucoStep(data.lobbyId, result.truco);
-      io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
+      broadcastList();
       return;
     }
     if (result.success) {
@@ -982,8 +992,7 @@ io.on('connection', (socket) => {
         io.to(player.socketId).emit('game:yourHand', player.hand);
         io.to(player.socketId).emit('yourHand', player.hand);
       });
-      io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
-      io.emit('lobbiesList', lobbyManager.getActiveLobbiesInfo());
+      broadcastList();
     } else {
       socket.emit('game:error', result.error);
     }
@@ -1090,11 +1099,11 @@ io.on('connection', (socket) => {
         const result = lobbyManager.leaveLobby(lobbyId, currentUserId);
         if (result.success) {
           io.to(lobbyId).emit('lobby:updated', { lobbyId });
-          io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
+          broadcastList();
         }
       });
       io.to(lobbyId).emit('lobby:updated', { lobbyId });
-      io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
+      broadcastList();
     }
   });
 
@@ -1138,8 +1147,7 @@ io.on('connection', (socket) => {
     }
 
     socket.emit('lobby:left', { success: true, lobbyId });
-    io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
-    io.emit('lobbiesList', lobbyManager.getActiveLobbiesInfo());
+    broadcastList();
   });
 
   socket.on('lobby:reconnect', ({ lobbyId, userId }) => {
@@ -1150,6 +1158,7 @@ io.on('connection', (socket) => {
     currentUserId = userId;
     lobbyManager.handleReconnect(lobbyId, userId, socket.id);
     socket.join(lobbyId);
+    socket.leave(LISTA);
 
     const lobby = lobbyManager.lobbies.get(lobbyId);
     if (lobby) {
@@ -1169,7 +1178,7 @@ io.on('connection', (socket) => {
     }
 
     io.to(lobbyId).emit('lobby:updated', { lobbyId });
-    io.emit('lobby:list-updated', lobbyManager.getActiveLobbiesInfo());
+    broadcastList();
   });
 });
 

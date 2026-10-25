@@ -60,6 +60,23 @@ async function mesa(n, target = 15) {
       console.log('✓ el 2v2 necesita la mesa completa');
     }
 
+    // La lista de mesas le llega al que mira, no al que está sentado, y una sola vez por tanda
+    {
+      const miron = connect();
+      const { socks } = await mesa(2);
+      let sentado = 0, mira = 0;
+      socks[0].on('lobby:list-updated', () => sentado++);
+      miron.on('lobby:list-updated', () => mira++);
+      await sleep(700);
+      sentado = mira = 0;
+      const otra = await mesa(2);
+      await sleep(700);
+      assert.equal(sentado, 0, 'el sentado no recibe la lista');
+      assert.equal(mira, 1, 'el que mira la recibe agrupada');
+      [miron, ...socks, ...otra.socks].forEach((s) => s.close());
+      console.log('✓ la lista va solo a quien la mira, agrupada');
+    }
+
     // 1v1 a 15: la lista lo muestra como truco, cada uno ve solo su mano
     const { socks: [a, b], lobby } = await mesa(2);
     const listed = await new Promise((r) => { a.once('lobby:list-updated', r); a.emit('lobby:list'); });
