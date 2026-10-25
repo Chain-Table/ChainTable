@@ -69,8 +69,13 @@ export interface SocketEvents {
   'connect_error': (error: Error) => void;
 }
 
+type Listener = Parameters<Socket['on']>[1];
+
 class SocketService {
   private socket: Socket | null = null;
+  // Listeners registrados aunque el socket todavía no exista (al abrir o recargar una página,
+  // sus efectos corren antes de que el SocketProvider conecte). Se enganchan al crear el socket.
+  private listeners: [string, Listener][] = [];
 
   connect(): Promise<Socket> {
     return new Promise((resolve, reject) => {
@@ -106,6 +111,7 @@ class SocketService {
         reconnectionDelay: 1000,
         auth: { token: getSessionToken() },
       });
+      for (const [event, cb] of this.listeners) this.socket.on(event, cb);
 
       this.socket.on('connect', () => {
         console.log('✅ Conectado al servidor WebSocket', { socketId: this.socket?.id });
@@ -265,17 +271,13 @@ class SocketService {
 
   // Métodos para escuchar eventos
   on<K extends keyof SocketEvents>(event: K, callback: SocketEvents[K]): void {
-    if (this.socket) {
-      console.debug(`socketService.on -> ${String(event)}`);
-      this.socket.on(event as string, callback as any);
-    }
+    this.listeners.push([event as string, callback as Listener]);
+    this.socket?.on(event as string, callback as Listener);
   }
 
   off<K extends keyof SocketEvents>(event: K, callback?: SocketEvents[K]): void {
-    if (this.socket) {
-      console.debug(`socketService.off -> ${String(event)}`);
-      this.socket.off(event as string, callback as any);
-    }
+    this.listeners = this.listeners.filter(([e, cb]) => e !== event || (callback && cb !== callback));
+    this.socket?.off(event as string, callback as any);
   }
 
   // Método genérico para emit (privado - usar métodos públicos async)
