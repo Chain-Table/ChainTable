@@ -255,6 +255,16 @@ test('cada uno ve su mano y la del compañero, nunca la del rival', () => {
   assert.deepEqual(T.view(sin, 0).partners, {});
 });
 
+test('el 7 de oro le gana al 4 de oro y la vista marca quién ganó cada baza', () => {
+  const m = partida(2, ['7o 4b 5b', '4o 6c 5c']);
+  ok(m, 0, 'jugar', { card: '7-oro' });
+  ok(m, 1, 'jugar', { card: '4-oro' });
+  const v = T.view(m, 1);
+  assert.deepEqual(v.results, [0]);
+  assert.deepEqual(v.bazaTop, [[0]]);
+  assert.equal(v.turn, 0, 'el que ganó sale en la segunda');
+});
+
 test('el que se levanta pierde la partida para su equipo', () => {
   const m = partida(4, ['3e 4o 5o', '4b 5b 6b', '3o 4c 5c', '6e 6o 6c']);
   assert.deepEqual(T.abandon(m, 2).events.at(-1), { type: 'fin', winner: 1 });
