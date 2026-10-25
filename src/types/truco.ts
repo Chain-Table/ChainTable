@@ -40,6 +40,7 @@ export interface TrucoState {
   counts: number[];
   played: { seat: number; card: string }[][];
   results: (0 | 1 | 'P')[];
+  bazaTop: number[][];
   envido: {
     state: 'NONE' | 'PENDING' | 'DONE';
     chain: Llamada[];

@@ -141,7 +141,7 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
         </div>
       </header>
 
-      <main className="relative flex-1 min-h-0 flex flex-col sm:flex-row items-center justify-center gap-2 p-3 sm:p-6">
+      <main className="relative flex-1 min-h-0 flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-2 p-3 sm:p-6">
         {/* Tanteador: en el celu arriba de la mesa; en pantallas grandes, en la esquina libre */}
         <div className="shrink-0 sm:absolute z-10 sm:top-3 sm:left-3 flex flex-col gap-1.5 px-2.5 py-2 rounded-2xl ring-2 ring-amber-950/80 shadow-[inset_0_1px_0_rgba(255,255,255,.25),0_8px_20px_rgba(0,0,0,.45)]"
           style={{ backgroundImage: "repeating-linear-gradient(90deg, transparent 0 38px, rgba(0,0,0,.22) 38px 40px), linear-gradient(#b45309, #451a03)" }}
@@ -159,7 +159,7 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
               <div
                 key={s}
                 data-seat={s}
-                className={`absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 transition-opacity ${out ? "opacity-40" : ""}`}
+                className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 transition-opacity ${out ? "opacity-40" : ""}`}
                 style={pos(s, 40, 41)}
               >
                 <div className="relative">
@@ -176,7 +176,7 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
                 </span>
                 <div className="flex -space-x-4">
                   {partner
-                    ? partner.map((c) => <TrucoCard key={c} id={c} size="sm" />)
+                    ? partner.map((c) => <TrucoCard key={c} id={c} size="mini" />)
                     : Array.from({ length: st.counts[s] }).map((_, i) => <TrucoCard key={i} size="xs" />)}
                 </div>
                 {Math.sin(angle(s)) <= -0.5 && bubble(s, true)}
@@ -184,14 +184,26 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
             );
           })}
 
-          {/* Cartas jugadas: cada uno las deja delante suyo, una por baza */}
+          {/* Cartas jugadas: cada uno las deja delante suyo, una por baza (la j-ésima es de la baza j).
+              La que ganó la baza brilla, las que perdieron se apagan; en una parda quedan las empatadas */}
           {st.order.map((s) => {
             const cards = st.played.flatMap((b) => b.filter((p) => p.seat === s).map((p) => p.card));
             return (
-              <div key={s} className="absolute -translate-x-1/2 -translate-y-1/2 flex -space-x-5" style={pos(s, 20, 27)}>
-                {cards.map((c) => (
-                  <TrucoCard key={c} id={c} size="played" className="animate-card-drop" />
-                ))}
+              <div key={s} className="absolute -translate-x-1/2 -translate-y-1/2 flex -space-x-5" style={pos(s, 20, 23)}>
+                {cards.map((c, j) => {
+                  const top = st.bazaTop?.[j];
+                  const won = top && st.results[j] !== "P" && top[0] === s;
+                  const lost = top && !won && !(st.results[j] === "P" && top.includes(s));
+                  return (
+                    <TrucoCard
+                      key={c}
+                      id={c}
+                      size="played"
+                      dimmed={!!lost}
+                      className={`animate-card-drop ${won ? "z-10 -translate-y-1 rounded-lg ring-2 ring-yellow-300 shadow-[0_0_16px_rgba(250,204,21,0.6)]" : ""}`}
+                    />
+                  );
+                })}
               </div>
             );
           })}

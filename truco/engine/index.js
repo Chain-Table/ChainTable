@@ -307,6 +307,11 @@ function view(m, seat) {
     counts: m.cards.map((c) => c.length),
     played: h.played.map((b) => b.map((p) => ({ seat: p.seat, card: p.card.id }))),
     results: h.results,
+    // Por baza terminada, quiénes tiraron la carta más alta (en orden de juego): el primero la gana, salvo parda
+    bazaTop: h.played.slice(0, h.results.length).map((b) => {
+      const max = Math.max(...b.map((j) => fuerza(j.card)));
+      return b.filter((j) => fuerza(j.card) === max).map((j) => j.seat);
+    }),
     envido: {
       state: h.envido.state, chain: h.envido.chain, caller: h.envido.caller,
       // Las cartas del tanto ganador se muestran recién al terminar la mano
