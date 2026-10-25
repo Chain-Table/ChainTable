@@ -226,9 +226,10 @@ const SIZES = {
   xs: "w-8",
   sm: "w-12",
   md: "w-16",
-  played: "w-11 sm:w-16",
-  mini: "w-8 sm:w-12",
-  hand: "w-[clamp(72px,11vw,120px)]",
+  played: "w-14 sm:w-20",
+  played6: "w-11 sm:w-16",
+  mini: "w-9 sm:w-12",
+  hand: "w-[clamp(100px,27vw,140px)]",
   pile: "w-[clamp(84px,11vw,132px)]",
 } as const;
 
