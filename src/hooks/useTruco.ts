@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { socketService } from '../services/socketService';
-import { useSocketContext } from '../contexts/SocketContext';
 import type { TrucoAction, TrucoEvent, TrucoState } from '../types/truco';
 
 export type Bubble = { ev: TrucoEvent; id: number };
@@ -10,7 +9,6 @@ let seq = 0;
 
 // Estado de la mesa de truco. Se monta al tope de la página: el server manda truco:state apenas empieza
 export function useTruco(lobbyId: string) {
-  const { isConnected } = useSocketContext();
   const [state, setState] = useState<TrucoState | null>(null);
   const [bubbles, setBubbles] = useState<Record<number, Bubble>>({});
   const [handPoints, setHandPoints] = useState<Puntos[]>([]);
@@ -44,8 +42,7 @@ export function useTruco(lobbyId: string) {
     };
     socketService.on('truco:state', onState);
     return () => socketService.off('truco:state', onState);
-    // isConnected: en una recarga el socket se crea después del primer render
-  }, [lobbyId, isConnected]);
+  }, [lobbyId]);
 
   const act = useCallback((action: TrucoAction) => socketService.trucoAct(lobbyId, action).catch(() => {}), [lobbyId]);
 
