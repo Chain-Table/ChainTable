@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import type { LobbyType, CreateLobbyFormData, Lobby } from '../types/lobby';
 import type { GameState, Card, GameUpdateData, WildColor } from '../types/game';
+import type { TrucoAction, TrucoState } from '../types/truco';
 import { getSessionToken } from '../utils/userSession';
 
 export interface SocketEvents {
@@ -46,6 +47,7 @@ export interface SocketEvents {
   'game:chooseColor': (data: { lobbyId: string; color: WildColor; cardIndex: number }) => void;
   'game:getLobbyInfo': (data: { lobbyId: string }) => void;
   'game:prizeDistributed': (data: { txHash: string; lobbyId: string }) => void;
+  'truco:act': (data: { lobbyId: string; action: TrucoAction }) => void;
 
   // Servidor al cliente
   'game:started': (data: { gameState: GameState; firstCard: Card }) => void;
@@ -59,6 +61,7 @@ export interface SocketEvents {
   'game:gameInfo': (data: { success: boolean; game?: GameState; error?: string }) => void;
   'game:prizesDistributed': (data: { success: boolean; txHash: string; explorerUrl: string; winners: string[] }) => void;
   'game:prizeError': (data: { error: string }) => void;
+  'truco:state': (state: TrucoState) => void;
 
   // Eventos de conexión
   'connect': () => void;
@@ -241,6 +244,11 @@ class SocketService {
     await this.ensureConnected();
     console.debug('socketService.chooseColor ->', { lobbyId, color, cardIndex });
     this.emit('game:chooseColor', { lobbyId, color, cardIndex });
+  }
+
+  async trucoAct(lobbyId: string, action: TrucoAction): Promise<void> {
+    await this.ensureConnected();
+    this.emit('truco:act', { lobbyId, action });
   }
 
   async getLobbyInfo(lobbyId: string): Promise<void> {

@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useGame } from "../hooks/useGame";
 import { useSocket } from "../hooks/useSocket";
+import { useTruco } from "../hooks/useTruco";
+import TrucoTable from "../components/TrucoTable";
 import { getUserSession } from "../utils/userSession";
 import { displayName, isValidPlay, playOrigin } from "../utils/gameUtils";
 import ColorPicker from "../components/ColorPicker";
@@ -60,6 +62,7 @@ const Game: React.FC = () => {
     leaveGame,
   } = useGame(lobbyId || "");
   const { cancelLobby } = useSocket();
+  const truco = useTruco(lobbyId || "");
 
   // Al terminar, la mesa queda unos segundos con el cartel del ganador antes del podio
   const [showResults, setShowResults] = useState(false);
@@ -84,6 +87,22 @@ const Game: React.FC = () => {
 
   if (!lobbyId || !session) {
     return null; // Se redirigirá en useEffect
+  }
+
+  if (truco.state) {
+    return (
+      <TrucoTable
+        st={truco.state}
+        version={truco.version}
+        bubbles={truco.bubbles}
+        handPoints={truco.handPoints}
+        notice={truco.notice}
+        tableName={gameState?.name ?? ""}
+        message={gameMessage}
+        onAct={truco.act}
+        onLeave={leaveGame}
+      />
+    );
   }
 
   const formatPlayerForLog = (playerName?: string) => {
@@ -221,13 +240,40 @@ const Game: React.FC = () => {
   if (gameState.status === "waiting") {
     const max = gameState.maxPlayers ?? 8;
     const empty = Math.max(0, max - gameState.players.length);
+    const isTruco = gameState.game === "truco";
+    const canStart = isTruco ? gameState.players.length === max : gameState.players.length >= 2;
+    const seatCard = (player: GameState["players"][number]) => (
+      <div
+        key={player.id}
+        className="animate-card-deal rounded-2xl bg-white/5 ring-1 ring-white/10 p-4 flex flex-col items-center gap-2"
+      >
+        <Avatar seed={player.walletAddress || player.username} size={52} />
+        <span className="font-bold text-sm max-w-full truncate">{displayName(player.username)}</span>
+        <div className="flex gap-1 text-xs">
+          {player.isHost && <span className="px-2 rounded-full bg-yellow-400/20 text-yellow-300">👑 Host</span>}
+          {player.id === session.id && <span className="px-2 rounded-full bg-blue-500/30 text-blue-200">{t("you_label")}</span>}
+        </div>
+      </div>
+    );
+    const emptySeat = (key: string) => (
+      <div
+        key={key}
+        className="rounded-2xl border-2 border-dashed border-white/10 p-4 flex flex-col items-center justify-center gap-2 text-white/30 min-h-[124px]"
+      >
+        <div className="w-[52px] h-[52px] rounded-full border-2 border-dashed border-white/15" />
+        <span className="text-sm">{t("empty_seat")}</span>
+      </div>
+    );
     return (
       <div className={`${PAGE_BG} px-4 py-10`}>
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-8">
             <p className="text-emerald-300/80 text-sm uppercase tracking-widest">{t("waiting_players")}</p>
             <h1 className="text-4xl sm:text-5xl font-extrabold mt-1">{gameState.name}</h1>
-            <p className="text-white/60 mt-2">{t("seats_count", { count: gameState.players.length, max })}</p>
+            <p className="text-white/60 mt-2">
+              {isTruco && `${t("truco_name")} · ${t("truco_mode", { mode: `${max / 2}v${max / 2}` })} · ${t("truco_to", { n: gameState.target })} · `}
+              {t("seats_count", { count: gameState.players.length, max })}
+            </p>
           </div>
 
           {isPaid && (
@@ -246,36 +292,33 @@ const Game: React.FC = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10">
-            {gameState.players.map((player) => (
-              <div
-                key={player.id}
-                className="animate-card-deal rounded-2xl bg-white/5 ring-1 ring-white/10 p-4 flex flex-col items-center gap-2"
-              >
-                <Avatar seed={player.walletAddress || player.username} size={52} />
-                <span className="font-bold text-sm max-w-full truncate">{displayName(player.username)}</span>
-                <div className="flex gap-1 text-xs">
-                  {player.isHost && <span className="px-2 rounded-full bg-yellow-400/20 text-yellow-300">👑 Host</span>}
-                  {player.id === session.id && <span className="px-2 rounded-full bg-blue-500/30 text-blue-200">{t("you_label")}</span>}
+          {isTruco ? (
+            // Equipos por orden de llegada: asientos pares contra impares
+            <div className="grid grid-cols-2 gap-4 mb-10">
+              {[0, 1].map((tm) => (
+                <div key={tm} className="space-y-3">
+                  <h2 className={`text-center font-display text-xl ${tm ? "text-rose-300" : "text-sky-300"}`}>
+                    {t("truco_team", { n: tm + 1 })}
+                  </h2>
+                  {Array.from({ length: max / 2 }).map((_, k) => {
+                    const player = gameState.players[2 * k + tm];
+                    return player ? seatCard(player) : emptySeat(`empty-${tm}-${k}`);
+                  })}
                 </div>
-              </div>
-            ))}
-            {Array.from({ length: Math.min(empty, 8) }).map((_, i) => (
-              <div
-                key={`empty-${i}`}
-                className="rounded-2xl border-2 border-dashed border-white/10 p-4 flex flex-col items-center justify-center gap-2 text-white/30 min-h-[124px]"
-              >
-                <div className="w-[52px] h-[52px] rounded-full border-2 border-dashed border-white/15" />
-                <span className="text-sm">{t("empty_seat")}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10">
+              {gameState.players.map(seatCard)}
+              {Array.from({ length: Math.min(empty, 8) }).map((_, i) => emptySeat(`empty-${i}`))}
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-3 justify-center">
             {isHost ? (
               <button
                 onClick={startGame}
-                disabled={isLoading || gameState.players.length < 2}
+                disabled={isLoading || !canStart}
                 className="px-10 py-4 rounded-2xl text-lg font-bold text-black bg-gradient-to-r from-yellow-300 to-orange-400 shadow-[0_0_30px_rgba(250,204,21,0.35)] hover:scale-105 transition-transform disabled:opacity-40 disabled:hover:scale-100"
               >
                 {isLoading ? t("game_starting") : t("game_start")}
@@ -292,8 +335,10 @@ const Game: React.FC = () => {
             </button>
           </div>
 
-          {gameState.players.length < 2 && (
-            <p className="mt-6 text-center text-yellow-200/80">⏳ {t("game_need_two", { count: 2 })}</p>
+          {!canStart && (
+            <p className="mt-6 text-center text-yellow-200/80">
+              ⏳ {isTruco ? t("truco_need_full", { count: empty }) : t("game_need_two", { count: 2 })}
+            </p>
           )}
           {error && <p className="mt-6 text-center text-red-300">❌ {error}</p>}
         </div>

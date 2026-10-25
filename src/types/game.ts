@@ -37,6 +37,8 @@ export interface GameState {
   hostId: string;
   maxPlayers?: number;
   mode?: 'BEAST' | 'CLASSIC';
+  game?: 'uno' | 'truco';
+  target?: 15 | 30;
 
   // Estado del juego
   drawPile: Card[];

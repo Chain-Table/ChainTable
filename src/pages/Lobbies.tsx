@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAccount, useDisconnect } from "wagmi";
 import { ConnectButton, useConnectModal } from "@rainbow-me/rainbowkit";
 import { useTranslation } from "react-i18next";
-import type { LobbySummary, LobbyType, SupportedNetwork } from "../types/lobby";
+import type { GameKind, LobbySummary, LobbyType, SupportedNetwork } from "../types/lobby";
 import { ENABLED_NETWORKS, NETWORKS, fmtAmount, symbolOf } from "../config/chains";
 import { createPaidLobby, joinPaidLobby, leavePaidLobby } from "../utils/chainTable";
 import { useSocket } from "../hooks/useSocket";
@@ -92,6 +92,7 @@ const Lobbies: React.FC = () => {
             name: form.name.trim(),
             ...(form.type === "privado" && { password: form.password }),
             ...(form.type === "pago" && { entryCost: form.entry, mode: form.mode, network: form.network, onchain }),
+            ...(form.game === "truco" && { game: "truco" as const, players: form.players, target: form.target }),
           },
           getUserId(),
           userName,
@@ -330,6 +331,15 @@ const TableCard: React.FC<{ lobby: LobbySummary; busy?: boolean; disabled?: bool
           {style.icon} {t(style.key)}
         </span>
       </div>
+      <div className="-mt-1 text-xs font-bold">
+        {lobby.game === "truco" ? (
+          <span className="px-2 py-1 rounded-lg bg-amber-500/15 text-amber-200">
+            🗡️ {t("truco_name")} · {lobby.maxPlayers / 2}v{lobby.maxPlayers / 2} · {t("truco_to", { n: lobby.target })}
+          </span>
+        ) : (
+          <span className="px-2 py-1 rounded-lg bg-red-500/15 text-red-200">🃏 UNO</span>
+        )}
+      </div>
 
       {price && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -414,6 +424,9 @@ const INPUT =
   "w-full bg-white/5 ring-1 ring-white/15 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-yellow-400";
 
 interface CreateForm {
+  game: GameKind;
+  players: 2 | 4 | 6;
+  target: 15 | 30;
   type: LobbyType;
   name: string;
   password: string;
@@ -429,6 +442,9 @@ const CreateModal: React.FC<{ busy: boolean; onClose: () => void; onSubmit: (f: 
 }) => {
   const { t } = useTranslation();
   const [f, setF] = useState<CreateForm>({
+    game: "uno",
+    players: 2,
+    target: 30,
     type: "publico",
     name: "",
     password: "",
@@ -440,8 +456,10 @@ const CreateModal: React.FC<{ busy: boolean; onClose: () => void; onSubmit: (f: 
   const paidAvailable = ENABLED_NETWORKS.length > 0;
   const entry = f.entry.replace(",", ".");
   const entryOk = parseFloat(entry) > 0;
+  const truco = f.game === "truco";
   const valid =
     f.name.trim().length >= 3 &&
+    !(truco && f.type === "pago") &&
     (f.type !== "privado" || f.password.length > 0) &&
     (f.type !== "pago" || (paidAvailable && entryOk));
 
@@ -454,9 +472,26 @@ const CreateModal: React.FC<{ busy: boolean; onClose: () => void; onSubmit: (f: 
         }}
         className="space-y-5"
       >
-        {/* Tipo */}
-        <div className="grid grid-cols-3 gap-2">
-          {(Object.keys(TYPE_STYLE) as LobbyType[]).map((type) => (
+        {/* Juego */}
+        <div className="grid grid-cols-2 gap-2">
+          {(["uno", "truco"] as GameKind[]).map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setF((p) => ({ ...p, game: g, type: g === "truco" && p.type === "pago" ? "publico" : p.type }))}
+              aria-pressed={f.game === g}
+              className={`rounded-2xl py-3 ring-1 transition font-display text-xl ${
+                f.game === g ? "bg-white/10 ring-yellow-400" : "bg-white/[0.03] ring-white/10 hover:bg-white/[0.06]"
+              }`}
+            >
+              {g === "uno" ? "🃏 UNO" : `🗡️ ${t("truco_name")}`}
+            </button>
+          ))}
+        </div>
+
+        {/* Tipo (el truco todavía no tiene mesas pagas) */}
+        <div className={`grid gap-2 ${truco ? "grid-cols-2" : "grid-cols-3"}`}>
+          {(Object.keys(TYPE_STYLE) as LobbyType[]).filter((type) => !truco || type !== "pago").map((type) => (
             <button
               key={type}
               type="button"
@@ -483,6 +518,47 @@ const CreateModal: React.FC<{ busy: boolean; onClose: () => void; onSubmit: (f: 
             className={INPUT}
           />
         </label>
+
+        {truco && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <span className="block text-sm text-white/70 mb-1.5">{t("mode_label")}</span>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([2, 4, 6] as const).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => set("players", p)}
+                    aria-pressed={f.players === p}
+                    className={`rounded-xl py-2 ring-1 font-bold transition ${
+                      f.players === p ? "bg-amber-500/20 ring-amber-400" : "bg-white/[0.03] ring-white/10 hover:bg-white/[0.06]"
+                    }`}
+                  >
+                    {p / 2}v{p / 2}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span className="block text-sm text-white/70 mb-1.5">{t("truco_points")}</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([15, 30] as const).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => set("target", n)}
+                    aria-pressed={f.target === n}
+                    className={`rounded-xl py-2 ring-1 font-bold transition ${
+                      f.target === n ? "bg-amber-500/20 ring-amber-400" : "bg-white/[0.03] ring-white/10 hover:bg-white/[0.06]"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {f.type === "privado" && (
           <label className="block">
