@@ -6,7 +6,7 @@
 
 <a href="https://chain-table.alva-p.xyz"><img src="https://img.shields.io/badge/Play_now-chain--table.alva--p.xyz-facc15?style=for-the-badge&labelColor=0b3d26" alt="Play now"></a>
 
-<a href="https://github.com/ronin-bot-creator/ChainTable/actions/workflows/test.yml"><img src="https://github.com/ronin-bot-creator/ChainTable/actions/workflows/test.yml/badge.svg" alt="CI"></a> <img src="https://img.shields.io/badge/Solidity-0.8.30-363636?logo=solidity" alt="Solidity"> <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19"> <img src="https://img.shields.io/badge/Socket.IO-4-010101?logo=socketdotio" alt="Socket.IO"> <img src="https://img.shields.io/badge/Foundry-tested-orange" alt="Foundry">
+<a href="https://github.com/Chain-Table/ChainTable/actions/workflows/test.yml"><img src="https://github.com/Chain-Table/ChainTable/actions/workflows/test.yml/badge.svg" alt="CI"></a> <img src="https://img.shields.io/badge/Solidity-0.8.30-363636?logo=solidity" alt="Solidity"> <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19"> <img src="https://img.shields.io/badge/Socket.IO-4-010101?logo=socketdotio" alt="Socket.IO"> <img src="https://img.shields.io/badge/Foundry-tested-orange" alt="Foundry">
 
 <a href="https://x.com/pimmpi_"><img src="https://img.shields.io/badge/@pimmpi__-000000?logo=x&logoColor=white" alt="@pimmpi_ on X"></a> <a href="https://x.com/Miguelito_Crypt"><img src="https://img.shields.io/badge/@Miguelito__Crypt-000000?logo=x&logoColor=white" alt="@Miguelito_Crypt on X"></a>
 
@@ -141,7 +141,7 @@ A network only appears in the app once a contract address is configured for it.
 **Requirements:** Node.js ≥ 22.10 and [Foundry](https://book.getfoundry.sh/) (only for the contracts).
 
 ```bash
-git clone --recursive https://github.com/ronin-bot-creator/ChainTable.git
+git clone --recursive https://github.com/Chain-Table/ChainTable.git
 cd ChainTable
 
 # 1. Game server → http://localhost:3001
@@ -261,7 +261,7 @@ Una red aparece en la app recién cuando tiene una dirección de contrato config
 **Requisitos:** Node.js ≥ 22.10 y [Foundry](https://book.getfoundry.sh/) (solo para los contratos).
 
 ```bash
-git clone --recursive https://github.com/ronin-bot-creator/ChainTable.git
+git clone --recursive https://github.com/Chain-Table/ChainTable.git
 cd ChainTable
 
 # 1. Servidor del juego → http://localhost:3001
