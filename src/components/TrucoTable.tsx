@@ -54,6 +54,14 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
     top: `${50 + ry * Math.sin(angle(s))}%`,
   });
 
+  // Pilas: en 1v1 y 2v2 las de arriba y abajo cerca del centro, para no chocar con el asiento;
+  // en 3v3 van repartidas en el óvalo (con cartas más chicas)
+  const pilePos = (s: number) => {
+    const sin = Math.sin(angle(s));
+    if (n === 6) return pos(s, 21, 24);
+    return { left: `${50 + 20 * Math.cos(angle(s))}%`, top: `${50 + 20 * sin}%` };
+  };
+
   const pendingBy = st.phase === "ENVIDO" ? st.envido.caller : st.phase === "TRUCO" ? st.truco.pendingBy : null;
   const pendingCall =
     st.phase === "ENVIDO" ? st.envido.chain.map(call).join(" · ") : st.phase === "TRUCO" ? call(TRUCO[st.truco.level]) : "";
@@ -93,13 +101,15 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
   const reason = (p: Puntos) =>
     p.reason === "mano" ? (st.truco.level ? call(TRUCO[st.truco.level - 1]) : t("truco_reason_mano")) : t(`truco_reason_${p.reason}`);
 
-  // Arriba del jugador, salvo los de la mitad de arriba de la mesa: abajo, para no taparse con el encabezado
-  const bubble = (s: number, below = false) =>
+  // Arriba del jugador; los de arriba de la mesa lo llevan a la izquierda (arriba está el encabezado y abajo su pila)
+  const bubble = (s: number, side = false) =>
     bubbles[s] && (
       <span
         key={bubbles[s].id}
-        className={`animate-bubble absolute left-1/2 z-20 whitespace-nowrap px-3 py-1 rounded-2xl bg-white text-black font-display text-base sm:text-lg shadow-xl after:absolute after:left-1/2 after:-translate-x-1/2 after:border-8 after:border-transparent ${
-          below ? "top-full mt-2 after:bottom-full after:border-b-white" : "bottom-full mb-2 after:top-full after:border-t-white"
+        className={`absolute z-20 whitespace-nowrap px-3 py-1 rounded-2xl bg-white text-black font-display text-base sm:text-lg shadow-xl after:absolute after:border-8 after:border-transparent ${
+          side
+            ? "animate-bubble-side right-full top-1/2 mr-2 after:left-full after:top-1/2 after:-translate-y-1/2 after:border-l-white"
+            : "animate-bubble left-1/2 bottom-full mb-2 after:top-full after:left-1/2 after:-translate-x-1/2 after:border-t-white"
         }`}
       >
         {bubbleText(bubbles[s].ev)}
@@ -141,7 +151,7 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
         </div>
       </header>
 
-      <main className="relative flex-1 min-h-0 flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-2 p-3 sm:p-6">
+      <main className="relative flex-1 min-h-0 flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-2 p-3 sm:p-4">
         {/* Tanteador: en el celu arriba de la mesa; en pantallas grandes, en la esquina libre */}
         <div className="shrink-0 sm:absolute z-10 sm:top-3 sm:left-3 flex flex-col gap-1.5 px-2.5 py-2 rounded-2xl ring-2 ring-amber-950/80 shadow-[inset_0_1px_0_rgba(255,255,255,.25),0_8px_20px_rgba(0,0,0,.45)]"
           style={{ backgroundImage: "repeating-linear-gradient(90deg, transparent 0 38px, rgba(0,0,0,.22) 38px 40px), linear-gradient(#b45309, #451a03)" }}
@@ -155,31 +165,35 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
             if (s === me) return null;
             const out = !st.order.includes(s);
             const partner = st.partners[s];
+            // Los de arriba llevan las cartas al costado: abajo chocarían con su pila
+            const top = Math.sin(angle(s)) < -0.9; // solo el de enfrente
             return (
               <div
                 key={s}
                 data-seat={s}
-                className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 transition-opacity ${out ? "opacity-40" : ""}`}
+                className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 flex items-center transition-opacity ${top ? "flex-row gap-2" : "flex-col gap-1"} ${out ? "opacity-40" : ""}`}
                 style={pos(s, 40, 41)}
               >
-                <div className="relative">
-                  <Avatar seed={st.names[s]} size={40} isTurn={acting.includes(s)} />
-                  {s === st.mano && (
-                    <span title={t("truco_mano")} className="absolute -right-2 -bottom-1 px-1 rounded bg-yellow-400 text-black text-[10px] font-extrabold">
-                      M
-                    </span>
-                  )}
-                  {Math.sin(angle(s)) > -0.5 && bubble(s)}
+                <div className="flex flex-col items-center gap-1">
+                  <div className="relative">
+                    <Avatar seed={st.names[s]} size={40} isTurn={acting.includes(s)} />
+                    {s === st.mano && (
+                      <span title={t("truco_mano")} className="absolute -right-2 -bottom-1 px-1 rounded bg-yellow-400 text-black text-[10px] font-extrabold">
+                        M
+                      </span>
+                    )}
+                    {!top && bubble(s)}
+                  </div>
+                  <span className={`max-w-[7rem] truncate text-xs font-bold px-2 rounded-full ring-1 ${TEAM_STYLE[team(s) === us ? 0 : 1]}`}>
+                    {name(s)}
+                  </span>
                 </div>
-                <span className={`max-w-[7rem] truncate text-xs font-bold px-2 rounded-full ring-1 ${TEAM_STYLE[team(s) === us ? 0 : 1]}`}>
-                  {name(s)}
-                </span>
                 <div className="flex -space-x-4">
                   {partner
                     ? partner.map((c) => <TrucoCard key={c} id={c} size="mini" />)
                     : Array.from({ length: st.counts[s] }).map((_, i) => <TrucoCard key={i} size="xs" />)}
                 </div>
-                {Math.sin(angle(s)) <= -0.5 && bubble(s, true)}
+                {top && bubble(s, true)}
               </div>
             );
           })}
@@ -189,7 +203,7 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
           {st.order.map((s) => {
             const cards = st.played.flatMap((b) => b.filter((p) => p.seat === s).map((p) => p.card));
             return (
-              <div key={s} className="absolute -translate-x-1/2 -translate-y-1/2 flex -space-x-5" style={pos(s, 20, 23)}>
+              <div key={s} className="absolute -translate-x-1/2 -translate-y-1/2 flex -space-x-6 sm:-space-x-8" style={pilePos(s)}>
                 {cards.map((c, j) => {
                   const top = st.bazaTop?.[j];
                   const won = top && st.results[j] !== "P" && top[0] === s;
@@ -198,7 +212,7 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
                     <TrucoCard
                       key={c}
                       id={c}
-                      size="played"
+                      size={n === 6 ? "played6" : "played"}
                       dimmed={!!lost}
                       className={`animate-card-drop ${won ? "z-10 -translate-y-1 rounded-lg ring-2 ring-yellow-300 shadow-[0_0_16px_rgba(250,204,21,0.6)]" : ""}`}
                     />
@@ -251,40 +265,43 @@ const TrucoTable: React.FC<Props> = ({ st, version, bubbles, handPoints, notice,
           </div>
         </div>
 
-        {st.phase === "OVER" && st.envido.result?.cards && (
-          <div className="flex items-center justify-center gap-2 pt-2 text-sm text-white/70">
-            {t("truco_envido_of", { player: name(st.envido.result.seat), n: st.envido.result.tanto })}
-            {st.envido.result.cards.map((c) => (
-              <TrucoCard key={c} id={c} size="sm" />
-            ))}
-          </div>
-        )}
+        {/* Alto fijo (botonera o envido) y lugar fijo para la mano: la mesa no cambia de tamaño entre estados */}
+        <div className="min-h-[4.75rem] flex flex-col justify-center">
+          {st.phase === "OVER" && st.envido.result?.cards && (
+            <div className="flex items-center justify-center gap-2 pt-2 text-sm text-white/70">
+              {t("truco_envido_of", { player: name(st.envido.result.seat), n: st.envido.result.tanto })}
+              {st.envido.result.cards.map((c) => (
+                <TrucoCard key={c} id={c} size="sm" />
+              ))}
+            </div>
+          )}
 
-        {(calls.length > 0 || canMazo) && (
-          <div className="flex flex-wrap items-center justify-center gap-2 px-4 pt-2">
-            {calls.map((a) => (
-              <button
-                key={a.type + ("call" in a ? a.call : "")}
-                onClick={() => onAct(a)}
-                className={`px-4 py-2 rounded-xl font-extrabold text-sm sm:text-base shadow-lg active:scale-95 transition ${ACTION_STYLE[a.type]}`}
-              >
-                {actionLabel(a)}
-              </button>
-            ))}
-            {canMazo && (
-              <button
-                onClick={() => (confirmMazo ? onAct({ type: "mazo" }) : setConfirmMazo(true))}
-                className={`px-3 py-2 rounded-xl text-sm font-semibold transition ${
-                  confirmMazo ? "bg-red-600 animate-pulse" : "bg-white/10 hover:bg-white/20 text-white/80"
-                }`}
-              >
-                {confirmMazo ? t("truco_mazo_confirm") : t("truco_mazo")}
-              </button>
-            )}
-          </div>
-        )}
+          {(calls.length > 0 || canMazo) && (
+            <div className="flex flex-wrap items-center justify-center gap-2 px-4 pt-2">
+              {calls.map((a) => (
+                <button
+                  key={a.type + ("call" in a ? a.call : "")}
+                  onClick={() => onAct(a)}
+                  className={`px-4 py-2 rounded-xl font-extrabold text-sm sm:text-base shadow-lg active:scale-95 transition ${ACTION_STYLE[a.type]}`}
+                >
+                  {actionLabel(a)}
+                </button>
+              ))}
+              {canMazo && (
+                <button
+                  onClick={() => (confirmMazo ? onAct({ type: "mazo" }) : setConfirmMazo(true))}
+                  className={`px-3 py-2 rounded-xl text-sm font-semibold transition ${
+                    confirmMazo ? "bg-red-600 animate-pulse" : "bg-white/10 hover:bg-white/20 text-white/80"
+                  }`}
+                >
+                  {confirmMazo ? t("truco_mazo_confirm") : t("truco_mazo")}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
-        <div className="flex justify-center gap-2 sm:gap-4 pt-3 min-h-[7rem]">
+        <div className="flex justify-center gap-2 sm:gap-4 pt-2 min-h-[clamp(155px,40vw,215px)]">
           {st.hand.map((c) => (
             <TrucoCard
               key={c}

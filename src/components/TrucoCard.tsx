@@ -203,10 +203,10 @@ function parseCarta(id: string): { num: number; palo: Palo } {
 }
 
 /** La carta como SVG suelto (para el componente y para exportar el mazo). */
-export const TrucoCardSvg: React.FC<{ id?: string; className?: string }> = ({ id, className }) => {
+export const TrucoCardSvg: React.FC<{ id?: string; className?: string; style?: React.CSSProperties }> = ({ id, className, style }) => {
   const c = id && parseCarta(id);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className={className} role="img" aria-label={c ? `${c.num} de ${PALO[c.palo].nombre}` : "carta tapada"}>
+    <svg viewBox={`0 0 ${W} ${H}`} className={className} style={style} role="img" aria-label={c ? `${c.num} de ${PALO[c.palo].nombre}` : "carta tapada"}>
       <Defs />
       {c ? (
         <>
@@ -226,9 +226,10 @@ const SIZES = {
   xs: "w-8",
   sm: "w-12",
   md: "w-16",
-  played: "w-11 sm:w-16",
-  mini: "w-8 sm:w-12",
-  hand: "w-[clamp(72px,11vw,120px)]",
+  played: "w-14 sm:w-20",
+  played6: "w-11 sm:w-16",
+  mini: "w-9 sm:w-12",
+  hand: "w-[clamp(100px,27vw,140px)]",
   pile: "w-[clamp(84px,11vw,132px)]",
 } as const;
 

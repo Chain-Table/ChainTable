@@ -6,16 +6,36 @@ import { useSocket } from "../hooks/useSocket";
 import { ENABLED_NETWORKS, NETWORKS, type NetworkKey } from "../config/chains";
 import { Avatar } from "../components/Table";
 import { CardBack } from "../components/Card";
+import { TrucoCardSvg } from "../components/TrucoCard";
 import type { Card } from "../types/game";
 
 const HAND = [
   { type: "Number", color: "Red", value: "7" },
-  { type: "Action", color: "Yellow", value: "Reverse" },
   { type: "Wild", color: "Wild", value: "WildDrawFour" },
   { type: "Action", color: "Blue", value: "Skip" },
-  { type: "Number", color: "Green", value: "3" },
 ] as Card[];
 const TOP = { type: "Action", color: "Green", value: "DrawTwo" } as Card;
+const TRUCO_HAND = ["1-basto", "1-espada", "7-oro"];
+
+const GAMES = [
+  { name: "UNO", icon: "🃏", text: "game_uno_text", tags: "game_uno_tags", cls: "from-red-500/20 ring-red-400/30" },
+  { name: "Truco", icon: "🗡️", text: "game_truco_text", tags: "game_truco_tags", cls: "from-sky-500/20 ring-sky-400/30" },
+];
+
+// Abanico de 3 cartas del juego: UNO en imagen, truco en SVG
+const Fan = ({ game, cls }: { game: string; cls: string }) => (
+  <div className="flex justify-center">
+    {[0, 1, 2].map((i) => {
+      const style = { rotate: `${(i - 1) * 10}deg`, translate: `0 ${i === 1 ? -8 : 0}px` };
+      const c = `${cls} drop-shadow-2xl ${i ? "-ml-6 sm:-ml-7" : ""}`;
+      return game === "UNO" ? (
+        <img key={i} src={getCardImageSrc(HAND[i])} alt="" className={c} style={style} />
+      ) : (
+        <TrucoCardSvg key={i} id={TRUCO_HAND[i]} className={c} style={style} />
+      );
+    })}
+  </div>
+);
 
 const STEPS = [
   { n: 1, title: "step1_title", text: "step1_text" },
@@ -94,29 +114,56 @@ export default function Landing() {
             </div>
           ))}
           <div className="absolute left-1/2 top-[40%] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-3">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               <CardBack size="sm" />
               <img
                 src={getCardImageSrc(TOP)}
                 alt=""
                 className="w-14 sm:w-16 rotate-6 rounded-[10%] shadow-[0_0_0_3px_#22c55e,0_0_30px_4px_#22c55e99] animate-card-drop"
               />
+              <TrucoCardSvg id="7-espada" className="w-14 sm:w-16 -rotate-6 drop-shadow-[0_0_14px_rgba(250,204,21,0.6)] animate-card-drop" />
             </div>
             <span className="rounded-full bg-yellow-400 text-black text-xs font-extrabold px-3 py-1 shadow-lg whitespace-nowrap">
               {t("prize_pool")} 0.4 ETH
             </span>
           </div>
-          <div className="absolute inset-x-0 bottom-0 flex justify-center animate-float">
-            {HAND.map((card, i) => (
-              <img
-                key={i}
-                src={getCardImageSrc(card)}
-                alt=""
-                className={`w-16 sm:w-20 drop-shadow-2xl animate-card-deal ${i ? "-ml-7 sm:-ml-8" : ""} ${i === 2 ? "-translate-y-4" : ""}`}
-                style={{ rotate: `${(i - 2) * 8}deg`, animationDelay: `${i * 80}ms` }}
-              />
-            ))}
+          <div className="absolute inset-x-0 bottom-0 flex justify-center gap-6 sm:gap-10 animate-float">
+            <Fan game="UNO" cls="w-14 sm:w-[4.5rem]" />
+            <Fan game="Truco" cls="w-14 sm:w-[4.5rem]" />
           </div>
+        </div>
+      </section>
+
+      {/* Los juegos */}
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+        <h2 className="font-display text-4xl sm:text-5xl text-center mb-10">{t("games_title")}</h2>
+        <div className="grid md:grid-cols-2 gap-4">
+          {GAMES.map((g) => (
+            <Link
+              key={g.name}
+              to={playTo}
+              className={`group rounded-3xl bg-gradient-to-br to-transparent ring-1 p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-6 hover:brightness-125 transition ${g.cls}`}
+            >
+              <div className="shrink-0 pt-2 group-hover:-translate-y-1 transition-transform" aria-hidden>
+                <Fan game={g.name} cls="w-16 sm:w-20" />
+              </div>
+              <div className="text-center sm:text-left">
+                <h3 className="font-display text-3xl">
+                  {g.icon} {g.name}
+                </h3>
+                <p className="text-white/70 mt-2">{t(g.text)}</p>
+                <div className="mt-4 flex flex-wrap gap-2 justify-center sm:justify-start">
+                  {t(g.tags)
+                    .split("|")
+                    .map((tag) => (
+                      <span key={tag} className="px-3 py-1 rounded-full text-xs font-semibold bg-black/30 ring-1 ring-white/10">
+                        {tag}
+                      </span>
+                    ))}
+                </div>
+              </div>
+            </Link>
+          ))}
         </div>
       </section>
 
@@ -143,6 +190,7 @@ export default function Landing() {
             <span className="text-xs font-bold tracking-widest text-yellow-300 uppercase">💰 {t("paid_kicker")}</span>
             <h2 className="font-display text-4xl sm:text-5xl mt-2 mb-4">{t("paid_title")}</h2>
             <p className="text-white/70 leading-relaxed">{t("paid_text")}</p>
+            <p className="text-white/50 text-sm mt-3">🗡️ {t("paid_uno_only")}</p>
             <div className="mt-6">
               <span className="block text-sm text-white/50 mb-2">{t("networks_label")}</span>
               <div className="flex flex-wrap gap-2">
