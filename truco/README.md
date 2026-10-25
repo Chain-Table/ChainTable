@@ -14,7 +14,7 @@ Truco argentino para ChainTable. Usa la misma plataforma que el UNO (mesas, sesi
 | Ruta | Qué hay |
 |---|---|
 | [`engine/`](engine/) | Motor del juego: módulo puro (sin sockets ni relojes) con `createMatch`, `act`, `timeout`, `nextHand` y `view`. Tests: `npm run test:truco`. |
-| [`src/components/TrucoCard.tsx`](../src/components/TrucoCard.tsx) | El mazo: naipe crema con marco del color del palo y los cortes de la pinta. Del 2 al 7 se dibuja en SVG; los ases (y después caballos y reyes) usan el arte de [`public/truco/`](../public/truco/). Vista previa: [`docs/mazo.webp`](docs/mazo.webp). |
+| [`src/components/TrucoCard.tsx`](../src/components/TrucoCard.tsx) | El mazo: naipe crema con marco del color del palo y los cortes de la pinta. Del 2 al 7, los caballos (11) y los reyes (12) se dibujan en SVG; los ases usan el arte de [`public/truco/`](../public/truco/). Vista previa: [`docs/mazo.webp`](docs/mazo.webp). |
 | [`docs/reglas.md`](docs/reglas.md) | Reglas completas para implementar: jerarquía, envido, bazas y pardas, cantos y puntos, equipos y pica-pica, máquina de estados de la mano, defaults recomendados y riesgo legal de las mesas pagas. |
 | [`docs/prompts-cartas.md`](docs/prompts-cartas.md) | Los 16 prompts para generar el mazo, ya armados para copiar y pegar. |
 | [`docs/investigacion/`](docs/investigacion/) | Notas de investigación con las fuentes de cada regla. |

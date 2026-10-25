@@ -24,8 +24,6 @@ const ARTE = new Set(["1-espada", "1-basto", "1-oro", "1-copa"]);
 // El oro es casi cuadrado: sin esto se ve más grande que los demás
 const ESCALA_ARTE: Partial<Record<Palo, number>> = { oro: 0.84, espada: 1.1, basto: 1.1 };
 
-const FIGURA: Record<number, string> = { 11: "CABALLO", 12: "REY" };
-
 const line = { stroke: TINTA, strokeWidth: 3.5, strokeLinejoin: "round", strokeLinecap: "round" } as const;
 
 // Cada palo en una caja de 100×100, parado, con el mismo trazo oscuro que el arte de los ases
@@ -160,6 +158,154 @@ function Indice({ num, palo }: { num: number; palo: Palo }) {
   );
 }
 
+const PIEL = "#f2c9a0";
+const ORO = "#f5c518";
+const fino = { ...line, strokeWidth: 2.4 } as const;
+// Manchas del armiño
+const Armino = ({ pts }: { pts: [number, number][] }) => (
+  <>
+    {pts.map(([x, y]) => (
+      <path key={`${x}-${y}`} d={`M${x} ${y} l-1.6 3.4 l1.6 -1 l1.6 1 Z`} fill={TINTA} />
+    ))}
+  </>
+);
+
+// Rey (12) de la baraja española: anciano de barba, corona, túnica roja y capa azul con armiño.
+// Dibujado en una caja de 200×300; el objeto del palo va en la mano levantada.
+function Rey({ palo }: { palo: Palo }) {
+  return (
+    <g transform={`translate(${(W - 250) / 2} ${(H - 375) / 2 + 4}) scale(1.25)`}>
+      <g filter="url(#tc-sticker)">
+        <ellipse cx="100" cy="289" rx="64" ry="7" fill="#000" opacity="0.12" />
+        {/* capa */}
+        <path d="M66 92 C44 120 36 200 30 286 L170 286 C164 200 156 120 134 92 Z" fill="#4a8fd6" />
+        <path d="M134 92 C156 120 164 200 170 286 L150 286 C148 200 146 130 128 96 Z" fill="#2f6db3" />
+        <path d="M66 92 C44 120 36 200 30 286 L170 286 C164 200 156 120 134 92 Z" fill="none" {...fino} />
+        <path d="M56 122 C48 170 44 230 42 286 L57 286 C59 230 62 170 67 126 Z" fill="#fff" {...fino} />
+        <path d="M144 122 C152 170 156 230 158 286 L143 286 C141 230 138 170 133 126 Z" fill="#fff" {...fino} />
+        <Armino pts={[[52, 150], [49, 190], [47, 230], [46, 268], [148, 150], [151, 190], [153, 230], [154, 268]]} />
+        <ellipse cx="85" cy="287" rx="11" ry="5" fill={ORO} {...fino} />
+        <ellipse cx="115" cy="287" rx="11" ry="5" fill={ORO} {...fino} />
+        {/* túnica */}
+        <path d="M74 98 L126 98 C132 150 138 220 142 284 L58 284 C62 220 68 150 74 98 Z" fill="#d9482b" />
+        <path d="M113 98 L126 98 C132 150 138 220 142 284 L123 284 C121 220 119 150 113 98 Z" fill="#b5361f" />
+        <path d="M74 98 L126 98 C132 150 138 220 142 284 L58 284 C62 220 68 150 74 98 Z" fill="none" {...fino} />
+        <path d="M94 100 L106 100 L110 284 L90 284 Z" fill={ORO} {...fino} />
+        {[140, 192, 244].map((y) => (
+          <path key={y} d={`M100 ${y - 8} L105 ${y} L100 ${y + 8} L95 ${y} Z`} fill="#d62f2f" {...fino} strokeWidth={1.6} />
+        ))}
+        <path d="M59.5 268 L140.5 268 L142 284 L58 284 Z" fill={ORO} {...fino} />
+        <path d="M70 160 L130 160 L131 170 L69 170 Z" fill={ORO} {...fino} />
+        <circle cx="100" cy="165" r="4" fill="#d62f2f" {...fino} strokeWidth={1.6} />
+        {/* brazo apoyado */}
+        <path d="M124 102 C140 112 147 140 145 168 L131 170 C131 148 127 128 118 116 Z" fill="#d9482b" {...fino} />
+        <path d="M130.5 164 L145.5 162 L146.5 173 L131 175 Z" fill={ORO} {...fino} />
+        <circle cx="139" cy="181" r="7" fill={PIEL} {...fino} />
+        {/* cuello de armiño */}
+        <path d="M68 98 C78 110 122 110 132 98 C126 88 74 88 68 98 Z" fill="#fff" {...fino} />
+        <Armino pts={[[80, 98], [92, 101], [108, 101], [120, 98]]} />
+        {/* cabeza */}
+        <path d="M80 58 C78 40 122 40 120 58 C124 70 121 82 116 88 L84 88 C79 82 76 70 80 58 Z" fill="#ececec" {...fino} />
+        <ellipse cx="100" cy="62" rx="17" ry="20" fill={PIEL} {...fino} />
+        <circle cx="90" cy="66" r="3.5" fill="#e8907a" opacity="0.45" />
+        <circle cx="110" cy="66" r="3.5" fill="#e8907a" opacity="0.45" />
+        <path d="M83 66 C84 82 89 98 100 114 C111 98 116 82 117 66 C110 75 90 75 83 66 Z" fill="#f7f7f7" {...fino} />
+        <path d="M94 82 C95 92 97 100 100 108 M106 82 C105 92 103 100 100 108" fill="none" stroke="#c9c9c9" strokeWidth="1.5" />
+        <path d="M88 71 C93 66 97 67 100 70 C103 67 107 66 112 71 C107 75 103 74 100 72.5 C97 74 93 75 88 71 Z" fill="#f7f7f7" {...fino} strokeWidth={1.8} />
+        <path d="M100 60 Q103.5 65 99 67" fill="none" stroke={TINTA} strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="93" cy="59" r="1.9" fill={TINTA} />
+        <circle cx="107" cy="59" r="1.9" fill={TINTA} />
+        <path d="M88 54 Q93 50.5 97 54 M103 54 Q107 50.5 112 54" fill="none" stroke="#bdbdbd" strokeWidth="3" strokeLinecap="round" />
+        {/* corona */}
+        <path d="M80 46 L82 30 L90 38 L100 25 L110 38 L118 30 L120 46 Z" fill={ORO} {...fino} />
+        <rect x="79" y="41" width="42" height="8" rx="2" fill={ORO} {...fino} />
+        {[89, 100, 111].map((x) => (
+          <circle key={x} cx={x} cy="45" r="2.2" fill="#d62f2f" />
+        ))}
+        {[[82, 30], [100, 25], [118, 30]].map(([x, y]) => (
+          <circle key={x} cx={x} cy={y} r="2.6" fill={ORO} {...fino} strokeWidth={1.6} />
+        ))}
+        {/* brazo levantado con el palo */}
+        <path d="M78 100 C62 104 50 112 44 124 L54 132 C60 122 68 116 82 114 Z" fill="#d9482b" {...fino} />
+        <path d="M42 121 L52 117 L57.5 128.5 L47.5 133.5 Z" fill={ORO} {...fino} />
+      </g>
+      <Pip palo={palo} cx={42} cy={palo === "espada" || palo === "basto" ? 80 : 94} s={palo === "espada" || palo === "basto" ? 76 : 50} />
+      <circle cx="43" cy="125" r="7" fill={PIEL} {...fino} />
+    </g>
+  );
+}
+
+// Ropa del jinete según el palo, como en la baraja clásica
+const JINETE: Record<Palo, { tunica: string; gorro: string; calza: string }> = {
+  oro: { tunica: ORO, gorro: ORO, calza: "#c98f0a" },
+  copa: { tunica: "#d9482b", gorro: "#d9482b", calza: "#b5361f" },
+  espada: { tunica: "#6fb3e8", gorro: "#4a8fd6", calza: "#2f6db3" },
+  basto: { tunica: ORO, gorro: "#d9482b", calza: "#d9482b" },
+};
+const PELO = "#a0673a";
+const PELO_OSC = "#7f4a24";
+const CRIN = "#4a2a14";
+
+// Caballo (11): jinete con gorro de pluma sobre un caballo que levanta una mano, objeto del palo en alto
+function Caballo({ palo }: { palo: Palo }) {
+  const j = JINETE[palo];
+  const largo = palo === "espada" || palo === "basto";
+  return (
+    <g transform={`translate(${(W - 250) / 2} ${(H - 375) / 2 + 4}) scale(1.25)`}>
+      <g filter="url(#tc-sticker)">
+        <ellipse cx="104" cy="284" rx="72" ry="7" fill="#000" opacity="0.12" />
+        {/* cola y patas de atrás del lado lejano */}
+        <path d="M56 170 C36 174 26 200 28 238 C36 228 40 212 44 202 C44 216 48 226 56 232 C56 212 56 192 60 180 Z" fill={CRIN} {...fino} />
+        <path d="M86 198 C88 226 92 252 94 274 L104 274 C102 250 100 222 100 202 Z" fill={PELO_OSC} {...fino} />
+        <rect x="92" y="272" width="14" height="8" rx="2" fill={TINTA} />
+        <path d="M128 198 C130 226 132 252 132 274 L142 274 C142 250 142 224 140 196 Z" fill={PELO_OSC} {...fino} />
+        <rect x="130" y="272" width="14" height="8" rx="2" fill={TINTA} />
+        {/* cuerpo */}
+        <path d="M54 176 C52 156 72 146 100 148 C128 148 148 154 152 170 C156 190 142 204 114 206 L80 206 C62 204 54 194 54 176 Z" fill={PELO} />
+        <path d="M60 190 C70 202 90 206 114 206 C138 204 152 192 152 178 C146 196 120 200 96 199 C80 198 68 196 60 190 Z" fill={PELO_OSC} />
+        <path d="M54 176 C52 156 72 146 100 148 C128 148 148 154 152 170 C156 190 142 204 114 206 L80 206 C62 204 54 194 54 176 Z" fill="none" {...fino} />
+        {/* patas del lado cercano: una apoyada atrás, una mano levantada adelante */}
+        <path d="M62 194 C60 220 64 250 64 274 L75 274 C75 250 77 222 82 202 Z" fill={PELO} {...fino} />
+        <rect x="61" y="272" width="16" height="8" rx="2" fill={TINTA} />
+        <path d="M138 192 C150 204 160 212 166 220 C171 228 168 238 161 243 L155 237 C159 233 159 228 155 225 C147 219 138 212 128 204 Z" fill={PELO} {...fino} />
+        <path d="M155 237 L161 243 L156 249 L149 243 Z" fill={TINTA} />
+        {/* manta y montura */}
+        <path d="M78 148 L126 148 L130 192 L74 192 Z" fill="#3f9b3a" {...fino} />
+        <path d="M74 186 L130 186 L131 196 L73 196 Z" fill={ORO} {...fino} />
+        <path d="M84 146 C90 140 112 140 118 146 L118 152 L84 152 Z" fill="#8a2a1c" {...fino} />
+        {/* cuello, crin y cabeza */}
+        <path d="M124 160 C128 140 136 120 148 106 L166 114 C158 130 152 150 150 172 Z" fill={PELO} {...fino} />
+        <path d="M150 102 C140 110 130 128 124 150 C130 146 134 138 138 128 C140 136 144 130 146 120 C148 126 152 118 154 108 Z" fill={CRIN} {...fino} strokeWidth={1.8} />
+        <path d="M150 106 C153 96 164 92 172 96 L187 117 C191 123 187 130 180 130 C174 130 170 126 166 122 L159 115 Z" fill={PELO} {...fino} />
+        <path d="M154 99 L156 86 L163 97 Z" fill={PELO} {...fino} />
+        <circle cx="166" cy="105" r="2.2" fill={TINTA} />
+        <circle cx="181" cy="122" r="1.5" fill={TINTA} />
+        <path d="M162 101 L168 116 M170 112 C175 119 180 123 186 121" fill="none" stroke="#8a2a1c" strokeWidth="2.6" strokeLinecap="round" />
+        {/* jinete: pierna, torso, cabeza */}
+        <path d="M90 140 L112 148 C119 154 119 163 115 169 L113 190 L103 190 L105 167 L88 156 Z" fill={j.calza} {...fino} />
+        <path d="M102 178 L115 178 L117 198 L99 198 Z" fill="#6b3b1b" {...fino} />
+        <path d="M84 100 C84 92 112 92 112 100 L117 146 L81 146 Z" fill={j.tunica} {...fino} />
+        <path d="M82 128 L116 128 L116.5 134 L81.5 134 Z" fill="#6b3b1b" />
+        <path d="M88 104 C82 118 90 130 104 130" fill="none" stroke={TINTA} strokeWidth="9" strokeLinecap="round" />
+        <path d="M88 104 C82 118 90 130 104 130" fill="none" stroke={j.tunica} strokeWidth="5.5" strokeLinecap="round" />
+        <path d="M106 130 L180 124" stroke="#6b3b1b" strokeWidth="1.6" />
+        <circle cx="106" cy="130" r="5" fill={PIEL} {...fino} />
+        <path d="M85 79 C84 66 112 64 112 79 C112 85 110 89 108 91 L88 91 C86 87 85 83 85 79 Z" fill="#7a4a22" {...fino} />
+        <circle cx="98" cy="81" r="12" fill={PIEL} {...fino} />
+        <circle cx="94" cy="80" r="1.7" fill={TINTA} />
+        <circle cx="102" cy="80" r="1.7" fill={TINTA} />
+        <path d="M95 86 Q98 88.5 101 86" fill="none" stroke={TINTA} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M82 72 C84 59 112 57 117 69 C109 74 92 74 82 72 Z" fill={j.gorro} {...fino} />
+        <path d="M88 64 C76 52 64 52 58 57 C66 60 76 66 86 71 Z" fill="#fff" {...fino} strokeWidth={1.8} />
+        {/* brazo en alto con el palo */}
+        <path d="M108 100 L114 96 L126 74 L118 70 Z" fill={j.tunica} {...fino} />
+      </g>
+      <Pip palo={palo} cx={largo ? 128 : 124} cy={largo ? 36 : 50} s={largo ? 70 : 42} />
+      <circle cx="122" cy="70" r="6" fill={PIEL} {...fino} />
+    </g>
+  );
+}
+
 function Centro({ id, num, palo }: { id: string; num: number; palo: Palo }) {
   if (ARTE.has(id)) {
     const k = ESCALA_ARTE[palo] ?? 1;
@@ -167,17 +313,9 @@ function Centro({ id, num, palo }: { id: string; num: number; palo: Palo }) {
     const h = 380 * k;
     return <image href={`/truco/${id}.webp`} x={(W - w) / 2} y={(H - h) / 2} width={w} height={h} preserveAspectRatio="xMidYMid meet" />;
   }
-  // ponytail: caballos y reyes provisorios (palo grande + nombre) hasta tener su arte
-  if (FIGURA[num]) {
-    return (
-      <>
-        <Pip palo={palo} cx={W / 2} cy={H / 2 - 30} s={170} />
-        <text x={W / 2} y={H / 2 + 110} textAnchor="middle" fontFamily="'Lilita One', system-ui, sans-serif" fontSize="34" letterSpacing="2" fill={PALO[palo].color}>
-          {FIGURA[num]}
-        </text>
-      </>
-    );
-  }
+  // Figuras dibujadas en SVG; si algún día hay arte generado, entra por ARTE y tiene prioridad
+  if (num === 12) return <Rey palo={palo} />;
+  if (num === 11) return <Caballo palo={palo} />;
   const s = num <= 3 ? 110 : num === 7 ? 82 : 98;
   return (
     <>
